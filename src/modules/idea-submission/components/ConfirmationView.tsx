@@ -145,7 +145,7 @@ export function ConfirmationView({ ideaId }: ConfirmationViewProps) {
             <div className="flex flex-col gap-2">
               <p className="text-sm text-green-700">{t("aiDraftReady")}</p>
               <Button asChild variant="outline" size="sm" className="self-start">
-                <a href={`/${locale}/ideas/${ideaId}/draft`}>{t("viewAiDraft")}</a>
+                <a href={`/${locale}/ideas/${ideaId}/analysis`}>{t("viewAiDraft")}</a>
               </Button>
             </div>
           )}

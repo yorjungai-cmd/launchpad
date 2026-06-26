@@ -250,8 +250,15 @@ function AllIdeasList({ locale }: { locale: string }) {
         return (
           <Card key={idea.ideaId} className="transition-colors hover:bg-muted/30">
             <CardContent className="flex items-center gap-4 p-4">
-              {/* Clickable area */}
-              <Link href={`/${locale}/ideas/${idea.ideaId}`} className="min-w-0 flex-1">
+              {/* Clickable area — completed analysis goes to /analysis result view */}
+              <Link
+                href={
+                  aiStatus === "analysis_complete"
+                    ? `/${locale}/ideas/${idea.ideaId}/analysis`
+                    : `/${locale}/ideas/${idea.ideaId}`
+                }
+                className="min-w-0 flex-1"
+              >
                 <p className="truncate text-sm font-medium text-foreground">{idea.title}</p>
                 <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>{idea.submitterName || "—"}</span>
