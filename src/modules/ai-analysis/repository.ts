@@ -16,7 +16,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import type {
   AIAnalysis,
   ClaudeAnalysisOutput,
@@ -101,9 +101,12 @@ function mapRowToAIAnalysis(row: AiAnalysisRow): AIAnalysis {
 // ─── Repository ───────────────────────────────────────────────────────────────
 
 export class AIAnalysisRepository {
+  // Use admin client (service role) — the inline worker runs as a background
+  // task without a user session, so RLS would block writes to ai_analyses.
+  // Writes are server-side and trusted (triggered via roleProcedure).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private getClient(): any {
-    return createServerSupabaseClient();
+    return createAdminSupabaseClient();
   }
 
   /**
