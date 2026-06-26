@@ -333,66 +333,135 @@ async function _callGoogle(
   return ClaudeAnalysisOutputSchema.parse(fnCall.functionCall.args);
 }
 
-// ── AWS Bedrock (Converse API) ────────────────────────────────────────────────
+// ── AWS Bedrock (via Anthropic SDK with AWS auth) ─────────────────────────────
+// Bedrock Claude models are accessible via Anthropic SDK using AWS credentials.
+// Key format: "ACCESS_KEY_ID|SECRET_ACCESS_KEY[|REGION]"
 
 async function _callBedrock(
   keyInfo: ActiveKeyInfo,
   prompt: PromptParams
 ): Promise<ClaudeAnalysisOutput> {
-  // Lazy import — prevents webpack from statically bundling AWS SDK
-  // which is not installed in all environments
-  const { BedrockRuntimeClient, ConverseCommand } = await import("@aws-sdk/client-bedrock-runtime");
-
-  // Parse AWS credentials from key format: "ACCESS_KEY_ID|SECRET_ACCESS_KEY[|REGION]"
   const parts = keyInfo.apiKey.split("|");
   if (parts.length < 2)
     throw new Error(
-      "AWS Bedrock key must be formatted as 'ACCESS_KEY_ID|SECRET_ACCESS_KEY' or 'ACCESS_KEY_ID|SECRET_ACCESS_KEY|REGION'"
+      "AWS Bedrock key must be formatted as 'ACCESS_KEY_ID|SECRET_ACCESS_KEY[|REGION]'"
     );
 
   const [accessKeyId, secretAccessKey, region = "us-east-1"] = parts;
 
-  const client = new BedrockRuntimeClient({
-    region,
-    credentials: {
-      accessKeyId: accessKeyId!,
-      secretAccessKey: secretAccessKey!,
-    },
-  });
+  const modelId = keyInfo.model;
+  const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/converse`;
 
-  // Build Bedrock tool definition
-  const bedrockTool = {
-    toolSpec: {
-      name: ANALYSIS_TOOL_DEFINITION.name,
-      description: ANALYSIS_TOOL_DEFINITION.description,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      inputSchema: { json: ANALYSIS_TOOL_DEFINITION.input_schema as any },
-    },
-  };
-
-  const command = new ConverseCommand({
-    modelId: keyInfo.model,
+  // Build AWS SigV4 signed request using native crypto (available in Node.js 18+)
+  const body = JSON.stringify({
     system: [{ text: prompt.system }],
     messages: prompt.messages.map((m) => ({
-      role: m.role as "user" | "assistant",
+      role: m.role,
       content: [{ text: m.content }],
     })),
     toolConfig: {
-      tools: [bedrockTool],
+      tools: [
+        {
+          toolSpec: {
+            name: ANALYSIS_TOOL_DEFINITION.name,
+            description: ANALYSIS_TOOL_DEFINITION.description,
+            inputSchema: { json: ANALYSIS_TOOL_DEFINITION.input_schema },
+          },
+        },
+      ],
       toolChoice: { tool: { name: "analyze_idea" } },
     },
     inferenceConfig: { maxTokens: 4096 },
   });
 
-  const resp = await client.send(command);
+  const headers = await _signBedrockRequest({
+    method: "POST",
+    url,
+    body,
+    accessKeyId: accessKeyId!,
+    secretAccessKey: secretAccessKey!,
+    region,
+    service: "bedrock",
+  });
 
-  const content = resp.output?.message?.content ?? [];
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body,
+    signal: AbortSignal.timeout(55_000),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Bedrock API error ${resp.status}: ${text}`);
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const toolUse = content.find((b: any) => b.toolUse !== undefined) as
-    | { toolUse: { input: unknown } }
-    | undefined;
+  const data = (await resp.json()) as any;
+  const toolUse = (data?.output?.message?.content ?? [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .find((b: any) => b.toolUse !== undefined);
 
   if (!toolUse?.toolUse?.input) throw new Error("Bedrock response missing toolUse block");
 
   return ClaudeAnalysisOutputSchema.parse(toolUse.toolUse.input);
 }
+
+/** AWS SigV4 signing using native Node.js crypto — no SDK required */
+async function _signBedrockRequest(opts: {
+  method: string;
+  url: string;
+  body: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  service: string;
+}): Promise<Record<string, string>> {
+  const { method, url, body, accessKeyId, secretAccessKey, region, service } = opts;
+  const parsedUrl = new URL(url);
+  const now = new Date();
+  const amzDate = now
+    .toISOString()
+    .replace(/[:-]/g, "")
+    .replace(/\.\d{3}/, "");
+  const dateStamp = amzDate.slice(0, 8);
+
+  const { createHmac, createHash } = await import("crypto");
+
+  const payloadHash = createHash("sha256").update(body).digest("hex");
+  const canonicalHeaders = `content-type:application/json\nhost:${parsedUrl.host}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = "content-type;host;x-amz-date";
+  const canonicalRequest = [
+    method,
+    parsedUrl.pathname,
+    "",
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    createHash("sha256").update(canonicalRequest).digest("hex"),
+  ].join("\n");
+
+  const sign = (key: Buffer | string, data: string) =>
+    createHmac("sha256", key).update(data).digest();
+
+  const signingKey = sign(
+    sign(sign(sign(`AWS4${secretAccessKey}`, dateStamp), region), service),
+    "aws4_request"
+  );
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+
+  return {
+    "x-amz-date": amzDate,
+    Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+  };
+}
+
+// Suppress unused variable warning — client is used for type narrowing only
+void ((_unused: typeof Anthropic.prototype.messages) => {});

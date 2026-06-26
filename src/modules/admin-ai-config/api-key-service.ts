@@ -26,8 +26,7 @@
 
 import logger from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
-// @aws-sdk/client-bedrock is lazily imported inside _validateBedrockKey and _listBedrockModels
-// to prevent webpack from statically bundling it (causes build failure if not installed)
+// @aws-sdk packages are NOT imported — Bedrock calls use REST API with SigV4 signing
 import { adminAuditLogService } from "./audit-log-service";
 import type { ApiKeyMasked, SaveApiKeyInput, Provider } from "./schemas";
 
@@ -526,41 +525,41 @@ export class ApiKeyService {
     }
 
     try {
-      const { BedrockClient, ListFoundationModelsCommand } =
-        await import("@aws-sdk/client-bedrock");
-      const client = new BedrockClient({
+      // Validate via Bedrock REST API — no SDK required
+      const url = `https://bedrock.${region}.amazonaws.com/foundation-models?byOutputModality=TEXT`;
+      const headers = await _signAWSRequest({
+        method: "GET",
+        url,
+        body: "",
+        accessKeyId,
+        secretAccessKey,
         region,
-        credentials: { accessKeyId, secretAccessKey },
-        requestHandler: { requestTimeout: 10_000 },
+        service: "bedrock",
       });
-
-      await client.send(new ListFoundationModelsCommand({ byOutputModality: "TEXT" }));
-      return { valid: true, latencyMs: Date.now() - start };
-    } catch (err: unknown) {
-      const latencyMs = Date.now() - start;
-      const errName = err instanceof Error ? err.name : "unknown";
-      const errMsg = err instanceof Error ? err.message : String(err);
-
-      if (
-        errName === "UnrecognizedClientException" ||
-        errName === "InvalidClientTokenId" ||
-        errName === "AuthFailure" ||
-        errMsg.includes("security token") ||
-        errMsg.includes("credentials")
-      ) {
+      const resp = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (resp.ok) return { valid: true, latencyMs: Date.now() - start };
+      if (resp.status === 403 || resp.status === 401) {
         return {
           valid: false,
           error: "AWS credentials invalid or Bedrock access not enabled.",
-          latencyMs,
+          latencyMs: Date.now() - start,
         };
       }
-
-      if (errName === "TimeoutError" || errMsg.includes("timeout")) {
-        return { valid: false, error: "Validation timeout — check region and network.", latencyMs };
-      }
-
-      logger.error({ errName, latencyMs }, "ApiKeyService._validateBedrockKey: unexpected error");
-      return { valid: false, error: `Bedrock validation error: ${errName}`, latencyMs };
+      return {
+        valid: false,
+        error: `Bedrock API error ${resp.status}`,
+        latencyMs: Date.now() - start,
+      };
+    } catch (err: unknown) {
+      const latencyMs = Date.now() - start;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes("timeout"))
+        return { valid: false, error: "Validation timeout — check region.", latencyMs };
+      logger.error({ errMsg, latencyMs }, "ApiKeyService._validateBedrockKey: error");
+      return { valid: false, error: `Bedrock validation error: ${errMsg}`, latencyMs };
     }
   }
 
@@ -623,38 +622,45 @@ export class ApiKeyService {
     if (!accessKeyId || !secretAccessKey) return this._bedrockFallbackModels();
 
     try {
-      const { BedrockClient, ListFoundationModelsCommand } =
-        await import("@aws-sdk/client-bedrock");
-      const client = new BedrockClient({
+      // List models via Bedrock REST API — no SDK required
+      const url = `https://bedrock.${region}.amazonaws.com/foundation-models?byOutputModality=TEXT`;
+      const headers = await _signAWSRequest({
+        method: "GET",
+        url,
+        body: "",
+        accessKeyId,
+        secretAccessKey,
         region,
-        credentials: { accessKeyId, secretAccessKey },
-        requestHandler: { requestTimeout: 10_000 },
+        service: "bedrock",
       });
+      const resp = await fetch(url, { headers, signal: AbortSignal.timeout(10_000) });
+      if (!resp.ok) return this._bedrockFallbackModels();
 
-      const { modelSummaries } = await client.send(
-        new ListFoundationModelsCommand({ byOutputModality: "TEXT" })
-      );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = (await resp.json()) as any;
+      const summaries: Array<{
+        modelId?: string;
+        modelName?: string;
+        modelLifecycle?: { status?: string };
+        inferenceTypesSupported?: string[];
+      }> = data?.modelSummaries ?? [];
+      if (!summaries.length) return this._bedrockFallbackModels();
 
-      if (!modelSummaries?.length) return this._bedrockFallbackModels();
-
-      // Prefer ACTIVE models only that support ON_DEMAND inference
-      const active = modelSummaries.filter(
+      const active = summaries.filter(
         (m) =>
           m.modelLifecycle?.status === "ACTIVE" &&
           (m.inferenceTypesSupported?.includes("ON_DEMAND") ?? true)
       );
-
       const results = active.map((m) => ({
-        id: `us.${m.modelId ?? ""}`, // cross-region inference profile prefix
+        id: `us.${m.modelId ?? ""}`,
         name: `${m.modelName ?? m.modelId} (Bedrock)`,
       }));
-
-      // Also include direct model IDs as alternatives
-      const direct = active.slice(0, 10).map((m) => ({
-        id: m.modelId ?? "",
-        name: `${m.modelName ?? m.modelId} (Bedrock Direct)`,
-      }));
-
+      const direct = active
+        .slice(0, 10)
+        .map((m) => ({
+          id: m.modelId ?? "",
+          name: `${m.modelName ?? m.modelId} (Bedrock Direct)`,
+        }));
       return [...results, ...direct].filter((m) => m.id);
     } catch {
       return this._bedrockFallbackModels();
@@ -739,3 +745,61 @@ export class ApiKeyService {
 
 /** Singleton — import this everywhere; do not instantiate directly. */
 export const apiKeyService = new ApiKeyService();
+
+// ─── AWS SigV4 helper (module-level, no SDK required) ─────────────────────────
+
+/** Sign an AWS REST API request with SigV4 using native Node.js crypto */
+async function _signAWSRequest(opts: {
+  method: string;
+  url: string;
+  body: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  service: string;
+}): Promise<Record<string, string>> {
+  const { method, url, body, accessKeyId, secretAccessKey, region, service } = opts;
+  const parsedUrl = new URL(url);
+  const now = new Date();
+  const amzDate = now
+    .toISOString()
+    .replace(/[:-]/g, "")
+    .replace(/\.\d{3}/, "");
+  const dateStamp = amzDate.slice(0, 8);
+
+  const { createHmac, createHash } = await import("crypto");
+
+  const payloadHash = createHash("sha256").update(body).digest("hex");
+  const canonicalHeaders = `host:${parsedUrl.host}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = "host;x-amz-date";
+  const canonicalRequest = [
+    method,
+    parsedUrl.pathname,
+    parsedUrl.search.slice(1) || "",
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = [
+    "AWS4-HMAC-SHA256",
+    amzDate,
+    credentialScope,
+    createHash("sha256").update(canonicalRequest).digest("hex"),
+  ].join("\n");
+
+  const sign = (key: Buffer | string, data: string) =>
+    createHmac("sha256", key).update(data).digest();
+
+  const signingKey = sign(
+    sign(sign(sign(`AWS4${secretAccessKey}`, dateStamp), region), service),
+    "aws4_request"
+  );
+  const signature = createHmac("sha256", signingKey).update(stringToSign).digest("hex");
+
+  return {
+    "x-amz-date": amzDate,
+    Authorization: `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+  };
+}
