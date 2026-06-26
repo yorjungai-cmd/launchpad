@@ -49,9 +49,14 @@ export async function createTRPCContext(_opts: { headers: Headers }): Promise<Co
 
   const user = session?.user ?? null;
 
-  // Role comes from user_metadata (synced from profiles table by a DB trigger)
-  // Fallback: query profiles table if metadata is stale
-  const role: AppRole | null = (user?.user_metadata?.["role"] as AppRole | undefined) ?? null;
+  // Role comes from user_metadata (synced from profiles table by a DB trigger).
+  // Fallback: query profiles table directly if metadata is stale or not yet set.
+  let role: AppRole | null = (user?.user_metadata?.["role"] as AppRole | undefined) ?? null;
+
+  if (!role && user) {
+    const { data: profile } = await db.from("profiles").select("role").eq("id", user.id).single();
+    role = (profile?.role as AppRole | undefined) ?? null;
+  }
 
   return {
     db,
