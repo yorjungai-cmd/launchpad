@@ -92,6 +92,15 @@ export const GuestTrackingDTOSchema = z.object({
   /** ISO 8601 — maps from ideas.updated_at */
   updatedAt: z.string().datetime(),
   stageTimeline: z.array(StageTimelineEntryDTOSchema),
+  /** AI analysis result (null if not yet analyzed) — high-level summary only */
+  aiResult: z
+    .object({
+      summary: z.string().nullable(),
+      recommendedAction: z.string().nullable(),
+      stage: z.string().nullable(),
+      ideaType: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 export type GuestTrackingDTO = z.infer<typeof GuestTrackingDTOSchema>;

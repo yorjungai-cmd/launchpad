@@ -136,7 +136,7 @@ describe("SubmissionForm — accessibility", () => {
     expect(emailInput).not.toHaveAttribute("readonly");
   });
 
-  it("email field is read-only for authenticated internal users", () => {
+  it("email field is editable and pre-filled for authenticated internal users", () => {
     mockUseUser.mockReturnValue({
       id: "user-123",
       email: "internal@applcad.com",
@@ -145,7 +145,9 @@ describe("SubmissionForm — accessibility", () => {
     });
     renderForm();
     const emailInput = screen.getByPlaceholderText("submission.placeholders.submitterEmail");
-    expect(emailInput).toBeDisabled();
+    // Email is always editable now (pre-filled from session but changeable)
+    expect(emailInput).not.toBeDisabled();
+    expect(emailInput).toHaveValue("internal@applcad.com");
   });
 });
 

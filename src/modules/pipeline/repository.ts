@@ -354,6 +354,7 @@ export class PipelineRepository {
       submittedAt: ideaData.created_at,
       updatedAt: ideaData.updated_at,
       stageTimeline: transitions,
+      aiResult: null,
     };
   }
 

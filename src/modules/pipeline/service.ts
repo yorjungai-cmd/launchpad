@@ -14,6 +14,7 @@
  */
 
 import { pipelineRepository } from "./repository";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import type {
   GetKanbanInput,
   KanbanColumnDTO,
@@ -60,7 +61,8 @@ export function sortTimelineAscending(timeline: StageTimelineEntryDTO[]): StageT
  */
 export function toGuestTrackingDTO(
   idea: PipelineIdeaDTO,
-  timeline: StageTimelineEntryDTO[]
+  timeline: StageTimelineEntryDTO[],
+  aiResult: GuestTrackingDTO["aiResult"] = null
 ): GuestTrackingDTO {
   return {
     referenceNumber: idea.referenceNumber,
@@ -69,6 +71,7 @@ export function toGuestTrackingDTO(
     submittedAt: idea.submittedAt,
     updatedAt: idea.updatedAt,
     stageTimeline: sortTimelineAscending(timeline),
+    aiResult,
   };
 }
 
@@ -120,30 +123,54 @@ export class PipelineService {
   async trackByReference(input: TrackByReferenceInput): Promise<{ tracking: GuestTrackingDTO }> {
     const raw = await pipelineRepository.findIdeaByReferenceNumber(input.referenceNumber);
 
-    // The repository already returns a GuestTrackingDTO, but we re-apply
-    // masking + sorting through toGuestTrackingDTO to keep the transformation
-    // logic centralised and unit-testable.
-    //
-    // We reconstruct a minimal PipelineIdeaDTO-compatible shape from the raw
-    // GuestTrackingDTO fields so we can pass it through the pure function.
-    // (The repository strips PII before returning, so we only have safe fields.)
+    // Fetch high-level AI result via admin client (guest has no session → bypass RLS).
+    // We look up the idea id by reference number, then read its ai_analyses summary.
+    let aiResult: GuestTrackingDTO["aiResult"] = null;
+    try {
+      const db = createAdminSupabaseClient();
+      const { data: ideaRow } = await db
+        .from("ideas")
+        .select("id")
+        .eq("reference_number", input.referenceNumber)
+        .single();
+
+      if (ideaRow?.id) {
+        // ai_analyses is not in the generated types — use an untyped client
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: analysis } = await (db as any)
+          .from("ai_analyses")
+          .select("summary, recommended_action, stage, idea_type, processing_status")
+          .eq("idea_id", ideaRow.id)
+          .maybeSingle();
+
+        if (analysis && analysis.processing_status === "completed") {
+          aiResult = {
+            summary: analysis.summary ?? null,
+            recommendedAction: analysis.recommended_action ?? null,
+            stage: analysis.stage ?? null,
+            ideaType: analysis.idea_type ?? null,
+          };
+        }
+      }
+    } catch {
+      // Non-fatal — tracking still works without AI result
+      aiResult = null;
+    }
+
     const tracking = toGuestTrackingDTO(
       {
-        // Fields available in GuestTrackingDTO
         referenceNumber: raw.referenceNumber,
         title: raw.title,
         currentStage: raw.currentStage,
         submittedAt: raw.submittedAt,
         updatedAt: raw.updatedAt,
-        // Fields not in GuestTrackingDTO — provide safe defaults so the
-        // PipelineIdeaDTO shape is satisfied; they are dropped by
-        // toGuestTrackingDTO anyway.
         id: "",
         submitterType: "employee" as PipelineIdeaDTO["submitterType"],
         assignedReviewer: null,
         watermarkStatus: "ai_draft" as PipelineIdeaDTO["watermarkStatus"],
       },
-      raw.stageTimeline
+      raw.stageTimeline,
+      aiResult
     );
 
     return { tracking };

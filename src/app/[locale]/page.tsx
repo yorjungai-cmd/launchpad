@@ -45,7 +45,7 @@ export default async function HomePage({ params }: Props) {
         <p className="mt-6 text-sm text-slate-500">
           Already submitted?{" "}
           <Link
-            href={`/${locale}/track/LP-`}
+            href={`/${locale}/track`}
             className="font-medium text-blue-600 underline underline-offset-2 hover:text-blue-500"
           >
             Track your idea

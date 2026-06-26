@@ -151,6 +151,48 @@ export function TrackingForm({ referenceNumber, className }: TrackingFormProps) 
         <h2 className="text-sm font-semibold text-foreground">{t("tracking.timeline")}</h2>
         <StageTimeline timeline={tracking.stageTimeline} currentStage={tracking.currentStage} />
       </div>
+
+      {/* AI analysis result */}
+      {tracking.aiResult && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-foreground">ผลการวิเคราะห์ AI</h2>
+            {tracking.aiResult.recommendedAction && (
+              <Badge
+                className={cn(
+                  "border text-xs font-medium",
+                  tracking.aiResult.recommendedAction === "Go"
+                    ? "border-green-200 bg-green-100 text-green-800"
+                    : tracking.aiResult.recommendedAction === "No Go"
+                      ? "border-red-200 bg-red-100 text-red-800"
+                      : "border-amber-200 bg-amber-100 text-amber-800"
+                )}
+              >
+                {tracking.aiResult.recommendedAction}
+              </Badge>
+            )}
+          </div>
+          {tracking.aiResult.summary && (
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {tracking.aiResult.summary}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+            {tracking.aiResult.stage && (
+              <span>
+                Stage:{" "}
+                <span className="font-medium text-foreground">{tracking.aiResult.stage}</span>
+              </span>
+            )}
+            {tracking.aiResult.ideaType && (
+              <span>
+                Type:{" "}
+                <span className="font-medium text-foreground">{tracking.aiResult.ideaType}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </article>
   );
 }

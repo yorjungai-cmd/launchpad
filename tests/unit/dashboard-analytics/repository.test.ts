@@ -77,10 +77,11 @@ describe("DashboardRepository", () => {
   // ── getIdeaCountByStage ────────────────────────────────────────────────────
 
   describe("getIdeaCountByStage()", () => {
-    it("should return StageCountRow[] mapped from DB aggregation", async () => {
+    it("should return StageCountRow[] counted from raw rows", async () => {
+      // Code now counts raw rows in JS (no SQL aggregate)
       const dbData = [
-        { current_stage: "sandbox", count: 10 },
-        { current_stage: "validation_sprint", count: 5 },
+        ...Array(10).fill({ current_stage: "sandbox" }),
+        ...Array(5).fill({ current_stage: "validation_sprint" }),
       ];
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
@@ -89,14 +90,12 @@ describe("DashboardRepository", () => {
 
       expect(mockSupabaseFrom).toHaveBeenCalledWith("ideas");
       expect(result).toHaveLength(2);
-      expect(result[0]).toMatchObject({ stage: "sandbox", count: 10 });
-      expect(result[1]).toMatchObject({ stage: "validation_sprint", count: 5 });
+      expect(result.find((r) => r.stage === "sandbox")?.count).toBe(10);
+      expect(result.find((r) => r.stage === "validation_sprint")?.count).toBe(5);
     });
 
-    it("should handle count as string (Supabase aggregate quirk)", async () => {
-      const dbData = [
-        { current_stage: "closed_go", count: "7" }, // string count
-      ];
+    it("should count a single stage correctly", async () => {
+      const dbData = Array(7).fill({ current_stage: "closed_go" });
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
 
@@ -129,9 +128,9 @@ describe("DashboardRepository", () => {
   describe("getWinNoGoStats()", () => {
     it("should derive winRate from stage counts correctly", async () => {
       const dbData = [
-        { current_stage: "closed_go", count: 4 },
-        { current_stage: "closed_no_go", count: 1 },
-        { current_stage: "sandbox", count: 10 },
+        ...Array(4).fill({ current_stage: "closed_go" }),
+        ...Array(1).fill({ current_stage: "closed_no_go" }),
+        ...Array(10).fill({ current_stage: "sandbox" }),
       ];
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
@@ -146,7 +145,7 @@ describe("DashboardRepository", () => {
     });
 
     it("winRate = 0 when totalClosed = 0 (no division-by-zero)", async () => {
-      const dbData = [{ current_stage: "sandbox", count: 8 }];
+      const dbData = Array(8).fill({ current_stage: "sandbox" });
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
 
@@ -158,7 +157,7 @@ describe("DashboardRepository", () => {
     });
 
     it("winRate = 1 when all closed are go", async () => {
-      const dbData = [{ current_stage: "closed_go", count: 10 }];
+      const dbData = Array(10).fill({ current_stage: "closed_go" });
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
 
@@ -168,7 +167,7 @@ describe("DashboardRepository", () => {
     });
 
     it("winRate = 0 when all closed are no-go", async () => {
-      const dbData = [{ current_stage: "closed_no_go", count: 5 }];
+      const dbData = Array(5).fill({ current_stage: "closed_no_go" });
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
 
@@ -289,8 +288,8 @@ describe("DashboardRepository", () => {
   describe("getSourceBreakdown()", () => {
     it("should return SourceBreakdownRow[] with percentage = 0 (service computes it)", async () => {
       const dbData = [
-        { submitter_type: "employee", count: 10 },
-        { submitter_type: "partner", count: 5 },
+        ...Array(10).fill({ submitter_type: "employee" }),
+        ...Array(5).fill({ submitter_type: "partner" }),
       ];
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
@@ -302,11 +301,11 @@ describe("DashboardRepository", () => {
       for (const row of result) {
         expect(row.percentage).toBe(0);
       }
-      expect(result[0]).toMatchObject({ submitterType: "employee", count: 10 });
+      expect(result.find((r) => r.submitterType === "employee")?.count).toBe(10);
     });
 
-    it("should handle string count (aggregate quirk)", async () => {
-      const dbData = [{ submitter_type: "vendor", count: "3" }];
+    it("should count submitter types from raw rows", async () => {
+      const dbData = Array(3).fill({ submitter_type: "vendor" });
 
       mockSupabaseFrom.mockReturnValue(makeChain({ data: dbData, error: null }));
 

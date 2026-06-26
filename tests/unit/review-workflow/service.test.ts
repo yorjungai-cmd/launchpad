@@ -91,17 +91,17 @@ describe("applyWatermarkTransition()", () => {
 
 describe("validateStageTransition()", () => {
   it("should allow Sandbox → Validation Sprint", () => {
-    expect(validateStageTransition("Sandbox", "Validation Sprint").valid).toBe(true);
+    expect(validateStageTransition("sandbox", "validation_sprint").valid).toBe(true);
   });
 
   it("should allow Sandbox → Build Sprint (BD can skip)", () => {
-    expect(validateStageTransition("Sandbox", "Build Sprint").valid).toBe(true);
+    expect(validateStageTransition("sandbox", "build_sprint").valid).toBe(true);
   });
 
   it("should reject Closed → anything (terminal)", () => {
     for (const stage of VALID_STAGES) {
-      if (stage !== "Closed") {
-        expect(validateStageTransition("Closed", stage).valid).toBe(false);
+      if (stage !== "closed_go" && stage !== "closed_no_go") {
+        expect(validateStageTransition("closed_no_go", stage).valid).toBe(false);
       }
     }
   });
@@ -113,7 +113,7 @@ describe("validateStageTransition()", () => {
   });
 
   it("should reject unknown stage", () => {
-    expect(validateStageTransition("Sandbox", "Flying Stage").valid).toBe(false);
+    expect(validateStageTransition("sandbox", "Flying Stage").valid).toBe(false);
   });
 
   // PBT Property 2 — stage validity
@@ -124,7 +124,7 @@ describe("validateStageTransition()", () => {
         fc.constantFrom(...VALID_STAGES),
         (from, to) => {
           const result = validateStageTransition(from, to);
-          if (from === "Closed") return result.valid === false;
+          if (from === "closed_go" || from === "closed_no_go") return result.valid === false;
           if (from === to) return result.valid === false;
           return result.valid === true;
         }
