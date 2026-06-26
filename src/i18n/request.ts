@@ -20,6 +20,6 @@ export default getRequestConfig(async ({ requestLocale }) => {
   return {
     locale,
     // Dynamically import the correct message catalog
-    messages: (await import(`../../messages/${locale}.json`)) as Record<string, unknown>,
+    messages: (await import(`../../messages/${locale}.json`)).default as Record<string, unknown>,
   };
 });
