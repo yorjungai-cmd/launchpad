@@ -61,13 +61,17 @@ function isProtectedPath(pathname: string): boolean {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 export async function middleware(request: NextRequest) {
-  // 1. Run locale routing first so the response carries the correct locale
-  //    headers and cookies before we do anything else.
-  const intlResponse = intlMiddleware(request);
-
   const { pathname } = request.nextUrl;
 
-  // 2. Skip auth check for public paths
+  // 1. Skip middleware entirely for API routes — they don't need locale or auth
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
+  // 2. Run locale routing for all non-API paths
+  const intlResponse = intlMiddleware(request);
+
+  // 3. Skip auth check for public paths
   if (!isProtectedPath(pathname)) {
     return intlResponse;
   }
