@@ -169,6 +169,22 @@ export const adminRouter = router({
     }),
 
   /**
+   * admin.listModels
+   *
+   * Fetch available models from a provider using the provided API key.
+   * Returns { id, name } array for the model browser UI.
+   *
+   * Role: admin only
+   * Input: ValidateApiKeySchema (reuse — same shape: key + provider)
+   * Output: Array<{ id: string, name: string }>
+   */
+  listModels: roleProcedure("admin")
+    .input(ValidateApiKeySchema)
+    .mutation(async ({ input }) => {
+      return apiKeyService.listModels(input.key, input.provider);
+    }),
+
+  /**
    * admin.saveApiKey
    *
    * Validates key → stores in Supabase Vault → inserts api_keys row → audit log.

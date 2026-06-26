@@ -201,6 +201,11 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [validationPassed, setValidationPassed] = useState(false);
 
+  // Model browser state
+  const [models, setModels] = useState<Array<{ id: string; name: string }>>([]);
+  const [showModels, setShowModels] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+
   // Mutations
   const validateMutation = api.admin.validateApiKey.useMutation({
     onSuccess(data) {
@@ -230,8 +235,20 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
     },
   });
 
+  const listModelsMutation = api.admin.listModels.useMutation({
+    onSuccess(data) {
+      setModels(data);
+      setShowModels(true);
+      setLoadingModels(false);
+    },
+    onError() {
+      setModels([]);
+      setLoadingModels(false);
+      toast.error("Failed to fetch models");
+    },
+  });
+
   const handleClose = useCallback(() => {
-    // Reset all state when dialog closes
     setName("");
     setKeyValue("");
     setProvider("anthropic");
@@ -239,6 +256,9 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
     setShowKey(false);
     setValidationResult(null);
     setValidationPassed(false);
+    setModels([]);
+    setShowModels(false);
+    setLoadingModels(false);
     onClose();
   }, [onClose]);
 
@@ -397,6 +417,55 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
               onToggle={() => setSetActive((v) => !v)}
             />
           </div>
+
+          {/* Browse Models button — appears after validation passes */}
+          {validationPassed && (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={loadingModels}
+                onClick={() => {
+                  setLoadingModels(true);
+                  listModelsMutation.mutate({ key: keyValue, provider });
+                }}
+              >
+                {loadingModels ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+                    Loading models…
+                  </>
+                ) : (
+                  "Browse Available Models"
+                )}
+              </Button>
+
+              {/* Model list */}
+              {showModels && models.length > 0 && (
+                <div className="max-h-48 overflow-y-auto rounded-md border border-border">
+                  <ul className="divide-y divide-border" role="list" aria-label="Available models">
+                    {models.map((m) => (
+                      <li
+                        key={m.id}
+                        className="flex items-center justify-between px-3 py-2 text-sm"
+                      >
+                        <span className="font-medium">{m.name}</span>
+                        <span className="font-mono text-xs text-muted-foreground">{m.id}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {showModels && models.length === 0 && (
+                <p className="py-2 text-center text-xs text-muted-foreground">
+                  No models found for this provider.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <DialogFooter>

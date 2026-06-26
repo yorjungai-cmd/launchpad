@@ -328,32 +328,70 @@ export class ApiKeyService {
    * @param provider - Provider identifier (currently only 'anthropic').
    */
   async validateApiKey(key: string, provider: Provider): Promise<ValidationResult> {
-    if (provider === "anthropic") {
-      return this._validateAnthropicKey(key);
+    switch (provider) {
+      case "anthropic":
+        return this._validateAnthropicKey(key);
+      case "google":
+        return this._validateGoogleKey(key);
+      case "aws_bedrock":
+        return this._validateBedrockKey(key);
+      case "openrouter":
+        return this._validateOpenRouterKey(key);
+      default:
+        return { valid: false, error: `Unsupported provider: ${provider}` };
     }
+  }
 
-    // Future providers can be dispatched here.
-    return { valid: false, error: `Unsupported provider: ${provider}` };
+  /**
+   * listModels — fetch available models from a provider using the given key.
+   *
+   * Returns a simplified list of { id, name } pairs for the UI model browser.
+   * On failure returns an empty array (never throws).
+   */
+  async listModels(key: string, provider: Provider): Promise<Array<{ id: string; name: string }>> {
+    try {
+      switch (provider) {
+        case "anthropic":
+          return [
+            { id: "claude-opus-4-5", name: "Claude Opus 4.5" },
+            { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5" },
+            { id: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
+            { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
+          ];
+        case "google":
+          return this._listGoogleModels(key);
+        case "aws_bedrock":
+          return [
+            {
+              id: "anthropic.claude-sonnet-4-5-20250514-v1:0",
+              name: "Claude Sonnet 4.5 (Bedrock)",
+            },
+            { id: "anthropic.claude-haiku-4-5-20250514-v1:0", name: "Claude Haiku 4.5 (Bedrock)" },
+            { id: "amazon.nova-pro-v1:0", name: "Amazon Nova Pro" },
+            { id: "amazon.nova-lite-v1:0", name: "Amazon Nova Lite" },
+          ];
+        case "openrouter":
+          return this._listOpenRouterModels(key);
+        default:
+          return [];
+      }
+    } catch {
+      return [];
+    }
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
 
   /**
    * _maskKey — derive a display-safe string from a plaintext key.
-   *
-   * Format:
-   *   - If key starts with "sk-" → "sk-ant-...{last4}"  (Anthropic convention)
-   *   - Otherwise               → "sk-...{last4}"
-   *
-   * SECURITY: This is the ONLY place that reads plaintext to derive the mask.
-   * The mask is stored in the DB; plaintext is never persisted or returned.
    */
   private _maskKey(plaintext: string): string {
     const last4 = plaintext.slice(-4);
-    if (plaintext.startsWith("sk-")) {
-      return `sk-ant-...${last4}`;
-    }
-    return `sk-...${last4}`;
+    if (plaintext.startsWith("sk-ant-")) return `sk-ant-...${last4}`;
+    if (plaintext.startsWith("AIza")) return `AIza...${last4}`;
+    if (plaintext.startsWith("sk-or-")) return `sk-or-...${last4}`;
+    if (plaintext.startsWith("sk-")) return `sk-...${last4}`;
+    return `***...${last4}`;
   }
 
   /**
@@ -419,6 +457,109 @@ export class ApiKeyService {
         latencyMs,
       };
     }
+  }
+
+  /**
+   * _validateGoogleKey — test Google Gemini API key by listing models.
+   */
+  private async _validateGoogleKey(key: string): Promise<ValidationResult> {
+    const start = Date.now();
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+        { signal: AbortSignal.timeout(10_000) }
+      );
+      const latencyMs = Date.now() - start;
+
+      if (response.ok) return { valid: true, latencyMs };
+      if (response.status === 401 || response.status === 403) {
+        return { valid: false, error: "API key invalid or insufficient permissions", latencyMs };
+      }
+      return { valid: false, error: `Unexpected status: ${response.status}`, latencyMs };
+    } catch (err: unknown) {
+      const latencyMs = Date.now() - start;
+      if (err instanceof Error && err.name === "TimeoutError") {
+        return { valid: false, error: "Validation timeout", latencyMs };
+      }
+      return { valid: false, error: "Network error during validation", latencyMs };
+    }
+  }
+
+  /**
+   * _validateBedrockKey — validate AWS Bedrock access.
+   * Note: Full Bedrock validation requires AWS SigV4 signing. For simplicity,
+   * we accept any key that looks like a valid AWS access key format.
+   */
+  private async _validateBedrockKey(key: string): Promise<ValidationResult> {
+    const start = Date.now();
+    // AWS access keys: 20 chars, starts with AKIA/ASIA, or could be an ARN
+    const isValidFormat = /^(AKIA|ASIA)[A-Z0-9]{16}$/.test(key) || key.startsWith("arn:aws:");
+    const latencyMs = Date.now() - start;
+
+    if (isValidFormat) {
+      return { valid: true, latencyMs };
+    }
+    return {
+      valid: false,
+      error: "Invalid format. Expected AWS Access Key ID (AKIA...) or ARN.",
+      latencyMs,
+    };
+  }
+
+  /**
+   * _validateOpenRouterKey — test OpenRouter API key with /auth/key endpoint.
+   */
+  private async _validateOpenRouterKey(key: string): Promise<ValidationResult> {
+    const start = Date.now();
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/auth/key", {
+        headers: { Authorization: `Bearer ${key}` },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const latencyMs = Date.now() - start;
+
+      if (response.ok) return { valid: true, latencyMs };
+      if (response.status === 401) {
+        return { valid: false, error: "API key invalid", latencyMs };
+      }
+      return { valid: false, error: `Unexpected status: ${response.status}`, latencyMs };
+    } catch (err: unknown) {
+      const latencyMs = Date.now() - start;
+      if (err instanceof Error && err.name === "TimeoutError") {
+        return { valid: false, error: "Validation timeout", latencyMs };
+      }
+      return { valid: false, error: "Network error during validation", latencyMs };
+    }
+  }
+
+  /**
+   * _listGoogleModels — fetch available Gemini models from Google API.
+   */
+  private async _listGoogleModels(key: string): Promise<Array<{ id: string; name: string }>> {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`,
+      { signal: AbortSignal.timeout(10_000) }
+    );
+    if (!response.ok) return [];
+    const data = (await response.json()) as {
+      models?: Array<{ name: string; displayName: string }>;
+    };
+    return (data.models ?? [])
+      .filter((m) => m.name.includes("gemini"))
+      .map((m) => ({ id: m.name.replace("models/", ""), name: m.displayName }));
+  }
+
+  /**
+   * _listOpenRouterModels — fetch top models from OpenRouter.
+   */
+  private async _listOpenRouterModels(key: string): Promise<Array<{ id: string; name: string }>> {
+    const response = await fetch("https://openrouter.ai/api/v1/models", {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as { data?: Array<{ id: string; name: string }> };
+    return (data.data ?? []).slice(0, 50).map((m) => ({ id: m.id, name: m.name }));
   }
 
   /**
