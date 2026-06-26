@@ -168,7 +168,8 @@ describe("validateRejectInput()", () => {
 
     fc.assert(
       fc.property(
-        fc.string({ minLength: 10 }),
+        // Match non-whitespace strings of at least 10 chars so trimmed length ≥ 10
+        fc.stringMatching(/^\S{10,}$/),
         (validReason) => validateRejectInput({ reason: validReason }).valid === true
       ),
       { numRuns: 300 }
