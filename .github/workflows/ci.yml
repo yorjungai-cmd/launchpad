@@ -110,15 +110,13 @@ jobs:
 
   # ───────────────────────────────────────────────────────────────────────────
   # Job 4: Deploy to Vercel
-  #   - Pull requests  → Preview deployment (auto URL comment on PR)
-  #   - Push to main   → Production deployment
+  #   Uses Vercel CLI with --prebuilt for atomic deploys
   # ───────────────────────────────────────────────────────────────────────────
   deploy:
     name: Deploy (${{ github.ref == 'refs/heads/main' && 'Production' || 'Preview' }})
     runs-on: ubuntu-latest
-    needs: [typecheck, lint, test]   # Only deploy if all quality gates pass
+    needs: [typecheck, lint, test]
 
-    # Limit production deploys to main branch pushes (not PRs from forks)
     environment:
       name: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
       url: ${{ steps.deploy.outputs.url }}
@@ -152,6 +150,12 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
 
       - name: Deploy to Vercel
         id: deploy
