@@ -7,8 +7,19 @@ const withNextIntl = createNextIntlPlugin(
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Prevent bundling problematic native/binary packages in serverless functions
-  serverExternalPackages: ["pdf-parse", "pdfjs-dist", "officeparser", "mammoth"],
+  // Prevent bundling problematic native/binary/ESM-only packages in serverless functions
+  serverExternalPackages: [
+    "pdf-parse",
+    "pdfjs-dist",
+    "officeparser",
+    "mammoth",
+    "jsdom",
+    "cheerio",
+    "@mozilla/readability",
+    "html-encoding-sniffer",
+    "pino",
+    "pino-pretty",
+  ],
 };
 
 export default withNextIntl(nextConfig);
