@@ -8,7 +8,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import type { WatermarkStatus } from "@/shared/enums";
 import type {
   ReviewAction,
@@ -228,7 +228,8 @@ export class ReviewWorkflowRepository {
   async getQueueItems(
     filter: ReviewQueueFilter
   ): Promise<{ items: QueueItem[]; nextCursor: string | null; total: number }> {
-    const db = this.getClient();
+    // Use admin client to bypass RLS — RBAC is enforced at tRPC layer (roleProcedure)
+    const db = createAdminSupabaseClient() as any;
     const limit = Math.min(filter.limit ?? 20, 50);
 
     // Build base query: all ideas (left join to ai_analyses so ideas without analysis appear too)
