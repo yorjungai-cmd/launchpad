@@ -1,0 +1,344 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "save": "Save",
+    "confirm": "Confirm",
+    "back": "Back"
+  },
+  "auth": {
+    "signIn": "Sign In",
+    "signOut": "Sign Out",
+    "email": "Email",
+    "password": "Password",
+    "magicLink": "Magic Link"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "submit": "Submit Idea",
+    "track": "Track Idea",
+    "settings": "Settings"
+  },
+  "errors": {
+    "required": "This field is required",
+    "invalid_email": "Invalid email format",
+    "server_error": "A server error occurred",
+    "submission": {
+      "fileTooLarge": "File is too large. Maximum size is 50 MB.",
+      "invalidFileType": "Invalid file type. Accepted: PDF, PPTX, DOCX, DOC.",
+      "extractionFailed": "Could not extract content from the file. Please enter the text manually.",
+      "urlFetchFailed": "Could not retrieve content from the URL. Please try again or enter text manually.",
+      "submitFailed": "Failed to submit idea. Please try again."
+    }
+  },
+  "submission": {
+    "pageTitle": "Submit an Idea",
+    "pageDescription": "Share your idea with the team. You can submit as text, upload a file, or paste a link.",
+    "formLabel": "Idea Submission Form",
+    "fields": {
+      "title": "Idea Title",
+      "submitterName": "Your Name",
+      "submitterEmail": "Contact Email",
+      "submitterType": "Submitter Type",
+      "inputType": "How would you like to share your idea?",
+      "description": "Describe Your Idea",
+      "sourceUrl": "URL / Link",
+      "extractedPreview": "Extracted Content Preview"
+    },
+    "placeholders": {
+      "title": "Enter a concise title for your idea",
+      "submitterName": "Full name",
+      "submitterEmail": "your@email.com",
+      "description": "Describe your idea in detail: problem, solution, expected benefits...",
+      "sourceUrl": "https://..."
+    },
+    "tooltips": {
+      "title": "A short, clear title that summarises your idea (max 500 characters).",
+      "submitterName": "Your full name as you'd like it to appear.",
+      "submitterEmailGuest": "We'll send updates to this email address.",
+      "submitterEmailInternal": "Pre-filled from your account.",
+      "submitterType": "Select the category that best describes your relationship with AppliCAD.",
+      "description": "Describe the problem you're solving, your proposed solution, and the expected business impact.",
+      "sourceUrl": "Paste a link to a webpage, Google Slide, or any online document."
+    },
+    "submitterType": {
+      "label": "Submitter Type",
+      "placeholder": "Select type...",
+      "employee": "Employee",
+      "executive": "Executive",
+      "partner": "Partner",
+      "vendor": "Vendor"
+    },
+    "inputType": {
+      "text": "Text",
+      "file": "Upload File",
+      "url": "Link"
+    },
+    "fileUpload": {
+      "dropZoneLabel": "File upload area — drag and drop or click to select",
+      "dropZoneTitle": "Drag & drop your file here",
+      "dropZoneDesc": "PDF, PPTX, DOCX, or DOC · Max 50 MB",
+      "uploading": "Uploading file...",
+      "extracting": "Reading content...",
+      "previewLabel": "Extracted text preview",
+      "extractionFailed": "Could not extract content from file. Please enter the text manually below.",
+      "fallbackLabel": "Manual content input",
+      "fallbackPlaceholder": "Paste or type the content from your document here...",
+      "removeFile": "Remove file and start over",
+      "tryAnotherFile": "Try a different file"
+    },
+    "buttons": {
+      "submit": "Submit Idea",
+      "submitting": "Submitting...",
+      "fetchUrl": "Fetch Content",
+      "fetching": "Fetching..."
+    }
+  },
+  "confirmation": {
+    "pageTitle": "Idea Submitted",
+    "pageDescription": "Your idea has been received. Track its progress below.",
+    "statusPending": "Analysing your idea...",
+    "statusComplete": "AI Draft Ready",
+    "statusFailed": "Analysis Failed",
+    "referenceNumber": "Reference Number",
+    "copyRefNumber": "Copy reference number",
+    "analysing": "Analysing your idea — this usually takes less than 2 minutes.",
+    "aiDraftReady": "The AI has finished analysing your idea. Your AI Draft is ready.",
+    "viewAiDraft": "View AI Draft",
+    "analysisFailed": "The AI analysis could not be completed.",
+    "retryMessage": "Please contact the team or resubmit your idea.",
+    "stage": "Stage",
+    "loadingStatus": "Loading idea status...",
+    "errorFetchStatus": "Could not load idea status. Please refresh the page."
+  },
+  "track": {
+    "pageTitle": "Track Your Idea",
+    "pageDescription": "Enter your email to verify your identity and view your idea status.",
+    "formTitle": "Verify Identity",
+    "referenceNumber": "Reference Number",
+    "emailLabel": "Contact Email",
+    "emailPlaceholder": "The email you provided when submitting",
+    "emailInvalid": "Please enter a valid email address.",
+    "checkStatus": "Check Status",
+    "checking": "Checking...",
+    "notFound": "No idea found with this reference number and email combination.",
+    "errorGeneric": "An error occurred. Please try again.",
+    "statusTitle": "Idea Status",
+    "fields": {
+      "referenceNumber": "Reference Number",
+      "stage": "Stage",
+      "analysisStatus": "Analysis Status",
+      "createdAt": "Submitted On"
+    },
+    "status": {
+      "pending": "Pending Analysis",
+      "complete": "Analysis Complete",
+      "failed": "Analysis Failed"
+    }
+  },
+  "pipeline": {
+    "stages": {
+      "sandbox": "Sandbox",
+      "validation_sprint": "Validation Sprint",
+      "build_sprint": "Build Sprint",
+      "launch_and_test": "Launch & Test"
+    },
+    "submitterType": {
+      "employee": "Employee",
+      "executive": "Executive",
+      "partner": "Partner",
+      "vendor": "Vendor"
+    },
+    "kanban": {
+      "pageTitle": "Pipeline Kanban",
+      "filterStage": "Filter by Stage",
+      "filterSubmitterType": "Submitter Type",
+      "filterFrom": "From Date",
+      "filterTo": "To Date",
+      "allStages": "All Stages",
+      "allTypes": "All Types",
+      "loadMore": "Load more",
+      "emptyColumn": "No ideas in this stage",
+      "ideas": "idea"
+    },
+    "statusCard": {
+      "pageTitle": "Idea Status",
+      "title": "Idea Title",
+      "stage": "Stage",
+      "submitterType": "Submitter Type",
+      "assignedReviewer": "Assigned Reviewer",
+      "submittedAt": "Submitted On",
+      "updatedAt": "Last Updated",
+      "noReviewer": "Not yet assigned",
+      "timeline": "Timeline",
+      "notFound": "Idea Not Found",
+      "notFoundDesc": "The requested idea does not exist or you may not have access to it."
+    },
+    "tracking": {
+      "pageTitle": "Track Your Idea",
+      "pageDescription": "Enter your reference number to track your idea status.",
+      "referenceNumber": "Reference Number",
+      "currentStage": "Current Stage",
+      "submittedAt": "Submitted On",
+      "updatedAt": "Last Updated",
+      "timeline": "Timeline",
+      "notFound": "Reference number not found",
+      "notFoundDesc": "Please double-check your reference number or contact our team.",
+      "backHome": "Back to Home",
+      "loading": "Looking up..."
+    },
+    "timeline": {
+      "completed": "Completed",
+      "current": "Current",
+      "upcoming": "Upcoming",
+      "transitionedAt": "On"
+    }
+  },
+  "dashboard": {
+    "dateRange": {
+      "label": "Date Range",
+      "placeholder": "Select date range",
+      "presets": {
+        "last7days": "Last 7 days",
+        "last30days": "Last 30 days",
+        "last3months": "Last 3 months",
+        "ytd": "Year to Date (YTD)",
+        "custom": "Custom range"
+      },
+      "from": "From",
+      "to": "To",
+      "apply": "Apply",
+      "clear": "Clear"
+    },
+    "kpi": {
+      "loading": "Loading..."
+    },
+    "charts": {
+      "noData": "No data in the selected range",
+      "noDataDesc": "Try selecting a different date range",
+      "loading": "Loading chart data...",
+      "pipelineBreakdown": {
+        "title": "Ideas by Stage",
+        "ariaLabel": "Bar chart showing idea count per pipeline stage",
+        "yAxis": "Ideas",
+        "xAxis": "Stage"
+      },
+      "winNoGo": {
+        "title": "Win / No-Go Rate",
+        "ariaLabel": "Pie chart showing Win vs No-Go ratio",
+        "closedGo": "Approved (Go)",
+        "closedNoGo": "Rejected (No-Go)",
+        "inProgress": "In Progress"
+      },
+      "avgTimePerStage": {
+        "title": "Avg Time per Stage",
+        "ariaLabel": "Bar chart showing average days per pipeline stage",
+        "yAxis": "Days (avg)",
+        "xAxis": "Stage"
+      },
+      "reviewerWorkload": {
+        "title": "BD Reviewer Workload",
+        "ariaLabel": "Stacked bar chart showing workload per BD reviewer",
+        "yAxis": "Ideas",
+        "xAxis": "Reviewer"
+      },
+      "sourceBreakdown": {
+        "title": "Idea Sources",
+        "ariaLabel": "Pie chart showing idea submitter type breakdown",
+        "employee": "Employee",
+        "executive": "Executive",
+        "partner": "Partner",
+        "vendor": "Vendor"
+      }
+    },
+    "stages": {
+      "sandbox": "Sandbox",
+      "validation_sprint": "Validation Sprint",
+      "build_sprint": "Build Sprint",
+      "launch_test": "Launch & Test",
+      "closed_go": "Closed (Go)",
+      "closed_no_go": "Closed (No-Go)"
+    },
+    "export": {
+      "button": "Export Report",
+      "excel": "Export Excel",
+      "print": "Print PDF",
+      "loading": "Exporting..."
+    },
+    "ideaSummary": {
+      "title": "Executive Summary",
+      "loading": "Loading idea data...",
+      "notFound": "Idea not found",
+      "stage": "Current Stage",
+      "submittedAt": "Submitted On",
+      "submitterType": "Submitter Type",
+      "ideaType": "Idea Type",
+      "recommendation": "AI Recommendation",
+      "feasibility": "Feasibility Scores",
+      "strategicFit": "Strategic Fit",
+      "marketPotential": "Market Potential",
+      "technicalFeasibility": "Technical Feasibility",
+      "resourceRequirement": "Resource Requirement",
+      "businessImpact": "Business Impact",
+      "close": "Close"
+    }
+  },
+  "documents": {
+    "feasibilityReport": { "title": "Feasibility Report" },
+    "bmc": { "title": "Business Model Canvas" },
+    "launchPadPlan": { "title": "Launch PAD Plan" },
+    "pocProposal": { "title": "POC Proposal" },
+    "stageGateGuide": { "title": "Stage Gate Evaluation Guide" },
+    "projectRequirements": { "title": "Project Requirements Document" },
+    "actionPlan": { "title": "Action Plan" },
+    "resourcePlan": { "title": "Resource Plan" },
+    "gtmSummary": { "title": "GTM Summary" },
+    "executivePresentation": { "title": "Executive Presentation" },
+    "projectProposal": { "title": "Project Proposal (Complete)" },
+    "watermark": {
+      "aiDraft": "AI Draft – Pending BD Review",
+      "bdReviewed": "BD Reviewed – Pending Approval",
+      "approved": "Approved"
+    },
+    "status": {
+      "pending": "Pending",
+      "generating": "Generating...",
+      "completed": "Ready",
+      "failed": "Failed"
+    },
+    "actions": {
+      "download": "Download",
+      "downloadMd": "Download Markdown",
+      "downloadHtml": "Download HTML",
+      "viewDocument": "View Document",
+      "generating": "Generating documents..."
+    },
+    "sections": {
+      "executiveSummary": "Executive Summary",
+      "feasibilityScores": "Feasibility Scores",
+      "recommendation": "Recommendation",
+      "portfolioAlignment": "Portfolio Alignment",
+      "bmcCanvas": "Business Model Canvas",
+      "validationSprint": "Validation Sprint Plan",
+      "successMetrics": "Success Metrics",
+      "pocObjective": "POC Objective",
+      "pocScope": "POC Scope",
+      "pocTimeline": "POC Timeline",
+      "functionalRequirements": "Functional Requirements",
+      "nonFunctionalRequirements": "Non-Functional Requirements",
+      "milestones": "Milestones",
+      "tasksOwners": "Tasks & Owners",
+      "resourceRequirements": "Resource Requirements",
+      "budgetEstimate": "Budget Estimate",
+      "targetMarket": "Target Market",
+      "goToMarketStrategy": "Go-to-Market Strategy",
+      "launchMetrics": "Launch Metrics",
+      "executiveOverview": "Executive Overview",
+      "keyMetrics": "Key Metrics",
+      "gateOverview": "Gate Overview",
+      "gateCriteria": "Gate Criteria"
+    }
+  }
+}

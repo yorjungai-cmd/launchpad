@@ -1,0 +1,344 @@
+{
+  "common": {
+    "loading": "กำลังโหลด...",
+    "error": "เกิดข้อผิดพลาด",
+    "retry": "ลองใหม่",
+    "cancel": "ยกเลิก",
+    "save": "บันทึก",
+    "confirm": "ยืนยัน",
+    "back": "ย้อนกลับ"
+  },
+  "auth": {
+    "signIn": "เข้าสู่ระบบ",
+    "signOut": "ออกจากระบบ",
+    "email": "อีเมล",
+    "password": "รหัสผ่าน",
+    "magicLink": "ลิงก์เข้าสู่ระบบ"
+  },
+  "nav": {
+    "dashboard": "แดชบอร์ด",
+    "submit": "ส่ง Idea",
+    "track": "ติดตาม Idea",
+    "settings": "ตั้งค่า"
+  },
+  "errors": {
+    "required": "กรุณากรอกข้อมูล",
+    "invalid_email": "รูปแบบอีเมลไม่ถูกต้อง",
+    "server_error": "เกิดข้อผิดพลาดจากเซิร์ฟเวอร์",
+    "submission": {
+      "fileTooLarge": "ไฟล์มีขนาดใหญ่เกินไป ขนาดสูงสุดคือ 50 MB",
+      "invalidFileType": "ประเภทไฟล์ไม่รองรับ รับเฉพาะ PDF, PPTX, DOCX, DOC",
+      "extractionFailed": "ไม่สามารถอ่านเนื้อหาจากไฟล์ได้ กรุณากรอกข้อมูลด้วยตนเอง",
+      "urlFetchFailed": "ไม่สามารถดึงข้อมูลจาก URL ได้ กรุณาลองใหม่หรือกรอกข้อมูลด้วยตนเอง",
+      "submitFailed": "เกิดข้อผิดพลาดในการส่ง Idea กรุณาลองใหม่"
+    }
+  },
+  "submission": {
+    "pageTitle": "ส่ง Idea",
+    "pageDescription": "แบ่งปัน Idea ของคุณกับทีม สามารถส่งเป็นข้อความ อัปโหลดไฟล์ หรือวาง Link ได้เลย",
+    "formLabel": "แบบฟอร์มส่ง Idea",
+    "fields": {
+      "title": "ชื่อ Idea",
+      "submitterName": "ชื่อผู้ส่ง",
+      "submitterEmail": "อีเมลติดต่อ",
+      "submitterType": "ประเภทผู้ส่ง",
+      "inputType": "คุณต้องการส่ง Idea อย่างไร?",
+      "description": "รายละเอียด Idea",
+      "sourceUrl": "URL / ลิงก์",
+      "extractedPreview": "ตัวอย่างเนื้อหาที่อ่านได้"
+    },
+    "placeholders": {
+      "title": "ระบุชื่อ Idea ที่กระชับและชัดเจน",
+      "submitterName": "ชื่อ-นามสกุล",
+      "submitterEmail": "your@email.com",
+      "description": "อธิบาย Idea ของคุณอย่างละเอียด: ปัญหา, วิธีแก้ไข, ประโยชน์ที่คาดหวัง...",
+      "sourceUrl": "https://..."
+    },
+    "tooltips": {
+      "title": "ชื่อ Idea ที่สั้น กระชับ และบอกแนวคิดหลักได้ชัดเจน (ไม่เกิน 500 ตัวอักษร)",
+      "submitterName": "ชื่อ-นามสกุลเต็มตามที่ต้องการให้แสดง",
+      "submitterEmailGuest": "เราจะส่งอัปเดตไปยังอีเมลนี้",
+      "submitterEmailInternal": "ดึงข้อมูลจากบัญชีของคุณ",
+      "submitterType": "เลือกประเภทที่อธิบายความสัมพันธ์ของคุณกับ AppliCAD ได้ดีที่สุด",
+      "description": "อธิบายปัญหาที่คุณต้องการแก้ไข วิธีแก้ปัญหาที่เสนอ และผลลัพธ์ทางธุรกิจที่คาดหวัง",
+      "sourceUrl": "วาง Link ไปยังหน้าเว็บ Google Slide หรือเอกสารออนไลน์"
+    },
+    "submitterType": {
+      "label": "ประเภทผู้ส่ง",
+      "placeholder": "เลือกประเภท...",
+      "employee": "พนักงาน",
+      "executive": "ผู้บริหาร",
+      "partner": "พาร์ทเนอร์",
+      "vendor": "ผู้จำหน่าย"
+    },
+    "inputType": {
+      "text": "ข้อความ",
+      "file": "อัปโหลดไฟล์",
+      "url": "ลิงก์"
+    },
+    "fileUpload": {
+      "dropZoneLabel": "พื้นที่อัปโหลดไฟล์ — ลากและวาง หรือคลิกเพื่อเลือกไฟล์",
+      "dropZoneTitle": "ลากและวางไฟล์ที่นี่",
+      "dropZoneDesc": "PDF, PPTX, DOCX หรือ DOC · ขนาดสูงสุด 50 MB",
+      "uploading": "กำลังอัปโหลดไฟล์...",
+      "extracting": "กำลังอ่านเนื้อหา...",
+      "previewLabel": "ตัวอย่างเนื้อหาที่อ่านได้",
+      "extractionFailed": "ไม่สามารถอ่านเนื้อหาจากไฟล์ได้ กรุณากรอกข้อมูลด้วยตนเองด้านล่าง",
+      "fallbackLabel": "กรอกเนื้อหาด้วยตนเอง",
+      "fallbackPlaceholder": "วางหรือพิมพ์เนื้อหาจากเอกสารของคุณที่นี่...",
+      "removeFile": "ลบไฟล์และเริ่มใหม่",
+      "tryAnotherFile": "ลองไฟล์อื่น"
+    },
+    "buttons": {
+      "submit": "ส่ง Idea",
+      "submitting": "กำลังส่ง...",
+      "fetchUrl": "ดึงเนื้อหา",
+      "fetching": "กำลังดึง..."
+    }
+  },
+  "confirmation": {
+    "pageTitle": "ส่ง Idea สำเร็จ",
+    "pageDescription": "ระบบได้รับ Idea ของคุณแล้ว ติดตามสถานะด้านล่าง",
+    "statusPending": "กำลังวิเคราะห์ Idea ของคุณ...",
+    "statusComplete": "AI Draft พร้อมแล้ว",
+    "statusFailed": "การวิเคราะห์ล้มเหลว",
+    "referenceNumber": "หมายเลขอ้างอิง",
+    "copyRefNumber": "คัดลอกหมายเลขอ้างอิง",
+    "analysing": "กำลังวิเคราะห์ Idea ของคุณ — โดยปกติใช้เวลาไม่เกิน 2 นาที",
+    "aiDraftReady": "AI วิเคราะห์ Idea ของคุณเสร็จสิ้นแล้ว AI Draft พร้อมให้ตรวจสอบ",
+    "viewAiDraft": "ดู AI Draft",
+    "analysisFailed": "ไม่สามารถวิเคราะห์ Idea ได้",
+    "retryMessage": "กรุณาติดต่อทีม หรือส่ง Idea ใหม่อีกครั้ง",
+    "stage": "Stage",
+    "loadingStatus": "กำลังโหลดสถานะ Idea...",
+    "errorFetchStatus": "ไม่สามารถโหลดสถานะ Idea ได้ กรุณารีเฟรชหน้า"
+  },
+  "track": {
+    "pageTitle": "ติดตาม Idea ของคุณ",
+    "pageDescription": "กรอกอีเมลเพื่อยืนยันตัวตนและดูสถานะ Idea",
+    "formTitle": "ยืนยันตัวตน",
+    "referenceNumber": "หมายเลขอ้างอิง",
+    "emailLabel": "อีเมลติดต่อ",
+    "emailPlaceholder": "อีเมลที่ใช้ตอนส่ง Idea",
+    "emailInvalid": "กรุณากรอกอีเมลที่ถูกต้อง",
+    "checkStatus": "ตรวจสอบสถานะ",
+    "checking": "กำลังตรวจสอบ...",
+    "notFound": "ไม่พบ Idea ที่ตรงกับหมายเลขอ้างอิงและอีเมลนี้",
+    "errorGeneric": "เกิดข้อผิดพลาด กรุณาลองใหม่",
+    "statusTitle": "สถานะ Idea",
+    "fields": {
+      "referenceNumber": "หมายเลขอ้างอิง",
+      "stage": "Stage",
+      "analysisStatus": "สถานะการวิเคราะห์",
+      "createdAt": "วันที่ส่ง"
+    },
+    "status": {
+      "pending": "รอการวิเคราะห์",
+      "complete": "วิเคราะห์เสร็จสิ้น",
+      "failed": "การวิเคราะห์ล้มเหลว"
+    }
+  },
+  "pipeline": {
+    "stages": {
+      "sandbox": "Sandbox",
+      "validation_sprint": "Validation Sprint",
+      "build_sprint": "Build Sprint",
+      "launch_and_test": "Launch & Test"
+    },
+    "submitterType": {
+      "employee": "พนักงาน",
+      "executive": "ผู้บริหาร",
+      "partner": "พาร์ทเนอร์",
+      "vendor": "ผู้จำหน่าย"
+    },
+    "kanban": {
+      "pageTitle": "Pipeline Kanban",
+      "filterStage": "กรองตาม Stage",
+      "filterSubmitterType": "ประเภทผู้ส่ง",
+      "filterFrom": "ตั้งแต่วันที่",
+      "filterTo": "ถึงวันที่",
+      "allStages": "ทุก Stage",
+      "allTypes": "ทุกประเภท",
+      "loadMore": "โหลดเพิ่มเติม",
+      "emptyColumn": "ไม่มี Idea ใน Stage นี้",
+      "ideas": "idea"
+    },
+    "statusCard": {
+      "pageTitle": "สถานะ Idea",
+      "title": "ชื่อ Idea",
+      "stage": "Stage",
+      "submitterType": "ประเภทผู้ส่ง",
+      "assignedReviewer": "ผู้รับผิดชอบ",
+      "submittedAt": "วันที่ส่ง",
+      "updatedAt": "อัปเดตล่าสุด",
+      "noReviewer": "ยังไม่ได้รับมอบหมาย",
+      "timeline": "Timeline",
+      "notFound": "ไม่พบ Idea นี้",
+      "notFoundDesc": "Idea ที่ระบุไม่มีอยู่ในระบบ หรือคุณอาจไม่มีสิทธิ์เข้าถึง"
+    },
+    "tracking": {
+      "pageTitle": "ติดตามสถานะ Idea",
+      "pageDescription": "กรอกหมายเลขอ้างอิงเพื่อติดตามสถานะ Idea ของคุณ",
+      "referenceNumber": "หมายเลขอ้างอิง",
+      "currentStage": "Stage ปัจจุบัน",
+      "submittedAt": "วันที่ส่ง",
+      "updatedAt": "อัปเดตล่าสุด",
+      "timeline": "Timeline",
+      "notFound": "ไม่พบหมายเลขอ้างอิงนี้ในระบบ",
+      "notFoundDesc": "กรุณาตรวจสอบหมายเลขอ้างอิงอีกครั้ง หรือติดต่อทีมงาน",
+      "backHome": "กลับหน้าหลัก",
+      "loading": "กำลังค้นหา..."
+    },
+    "timeline": {
+      "completed": "ผ่านแล้ว",
+      "current": "ปัจจุบัน",
+      "upcoming": "ยังไม่ถึง",
+      "transitionedAt": "เมื่อ"
+    }
+  },
+  "dashboard": {
+    "dateRange": {
+      "label": "ช่วงเวลา",
+      "placeholder": "เลือกช่วงวันที่",
+      "presets": {
+        "last7days": "7 วันล่าสุด",
+        "last30days": "30 วันล่าสุด",
+        "last3months": "3 เดือนล่าสุด",
+        "ytd": "ตั้งแต่ต้นปี (YTD)",
+        "custom": "กำหนดเอง"
+      },
+      "from": "จาก",
+      "to": "ถึง",
+      "apply": "นำไปใช้",
+      "clear": "ล้าง"
+    },
+    "kpi": {
+      "loading": "กำลังโหลด..."
+    },
+    "charts": {
+      "noData": "ไม่มีข้อมูลในช่วงเวลาที่เลือก",
+      "noDataDesc": "ลองเลือกช่วงเวลาอื่น",
+      "loading": "กำลังโหลดข้อมูล...",
+      "pipelineBreakdown": {
+        "title": "จำนวน Idea ตาม Stage",
+        "ariaLabel": "แผนภูมิแท่งแสดงจำนวน Idea แต่ละ Stage",
+        "yAxis": "จำนวน Idea",
+        "xAxis": "Stage"
+      },
+      "winNoGo": {
+        "title": "Win / No-Go Rate",
+        "ariaLabel": "แผนภูมิวงกลมแสดงอัตราส่วน Win No-Go",
+        "closedGo": "ผ่าน (Go)",
+        "closedNoGo": "ไม่ผ่าน (No-Go)",
+        "inProgress": "กำลังดำเนินการ"
+      },
+      "avgTimePerStage": {
+        "title": "เวลาเฉลี่ยต่อ Stage",
+        "ariaLabel": "แผนภูมิแท่งแสดงเวลาเฉลี่ยแต่ละ Stage",
+        "yAxis": "วัน (เฉลี่ย)",
+        "xAxis": "Stage"
+      },
+      "reviewerWorkload": {
+        "title": "ภาระงาน BD Reviewer",
+        "ariaLabel": "แผนภูมิแท่งซ้อนแสดงภาระงานของ BD Reviewer",
+        "yAxis": "จำนวน Idea",
+        "xAxis": "Reviewer"
+      },
+      "sourceBreakdown": {
+        "title": "แหล่งที่มาของ Idea",
+        "ariaLabel": "แผนภูมิวงกลมแสดงประเภทผู้ส่ง Idea",
+        "employee": "พนักงาน",
+        "executive": "ผู้บริหาร",
+        "partner": "พาร์ทเนอร์",
+        "vendor": "ผู้จำหน่าย"
+      }
+    },
+    "stages": {
+      "sandbox": "Sandbox",
+      "validation_sprint": "Validation Sprint",
+      "build_sprint": "Build Sprint",
+      "launch_test": "Launch & Test",
+      "closed_go": "ปิด (Go)",
+      "closed_no_go": "ปิด (No-Go)"
+    },
+    "export": {
+      "button": "ส่งออกรายงาน",
+      "excel": "ส่งออก Excel",
+      "print": "พิมพ์ PDF",
+      "loading": "กำลังส่งออก..."
+    },
+    "ideaSummary": {
+      "title": "Executive Summary",
+      "loading": "กำลังโหลดข้อมูล...",
+      "notFound": "ไม่พบข้อมูล Idea",
+      "stage": "Stage ปัจจุบัน",
+      "submittedAt": "วันที่ส่ง",
+      "submitterType": "ประเภทผู้ส่ง",
+      "ideaType": "ประเภท Idea",
+      "recommendation": "คำแนะนำ AI",
+      "feasibility": "คะแนน Feasibility",
+      "strategicFit": "Strategic Fit",
+      "marketPotential": "Market Potential",
+      "technicalFeasibility": "Technical Feasibility",
+      "resourceRequirement": "Resource Requirement",
+      "businessImpact": "Business Impact",
+      "close": "ปิด"
+    }
+  },
+  "documents": {
+    "feasibilityReport": { "title": "รายงาน Feasibility" },
+    "bmc": { "title": "Business Model Canvas" },
+    "launchPadPlan": { "title": "Launch PAD Plan" },
+    "pocProposal": { "title": "POC Proposal" },
+    "stageGateGuide": { "title": "Stage Gate Evaluation Guide" },
+    "projectRequirements": { "title": "Project Requirements Document" },
+    "actionPlan": { "title": "Action Plan" },
+    "resourcePlan": { "title": "Resource Plan" },
+    "gtmSummary": { "title": "GTM Summary" },
+    "executivePresentation": { "title": "Executive Presentation" },
+    "projectProposal": { "title": "Project Proposal (ฉบับสมบูรณ์)" },
+    "watermark": {
+      "aiDraft": "AI Draft – รอ BD Review",
+      "bdReviewed": "BD Reviewed – รอ Approval",
+      "approved": "Approved"
+    },
+    "status": {
+      "pending": "รอดำเนินการ",
+      "generating": "กำลังสร้าง...",
+      "completed": "พร้อมแล้ว",
+      "failed": "ล้มเหลว"
+    },
+    "actions": {
+      "download": "ดาวน์โหลด",
+      "downloadMd": "ดาวน์โหลด Markdown",
+      "downloadHtml": "ดาวน์โหลด HTML",
+      "viewDocument": "ดูเอกสาร",
+      "generating": "กำลังสร้างเอกสาร..."
+    },
+    "sections": {
+      "executiveSummary": "Executive Summary",
+      "feasibilityScores": "Feasibility Scores",
+      "recommendation": "คำแนะนำ",
+      "portfolioAlignment": "ความสอดคล้องกับ Portfolio",
+      "bmcCanvas": "Business Model Canvas",
+      "validationSprint": "Validation Sprint Plan",
+      "successMetrics": "Success Metrics",
+      "pocObjective": "วัตถุประสงค์ POC",
+      "pocScope": "ขอบเขต POC",
+      "pocTimeline": "Timeline POC",
+      "functionalRequirements": "Functional Requirements",
+      "nonFunctionalRequirements": "Non-Functional Requirements",
+      "milestones": "Milestones",
+      "tasksOwners": "Tasks & Owners",
+      "resourceRequirements": "ความต้องการทรัพยากร",
+      "budgetEstimate": "ประมาณการงบประมาณ",
+      "targetMarket": "ตลาดเป้าหมาย",
+      "goToMarketStrategy": "กลยุทธ์ Go-to-Market",
+      "launchMetrics": "Launch Metrics",
+      "executiveOverview": "Executive Overview",
+      "keyMetrics": "Key Metrics",
+      "gateOverview": "Gate Overview",
+      "gateCriteria": "Gate Criteria"
+    }
+  }
+}
