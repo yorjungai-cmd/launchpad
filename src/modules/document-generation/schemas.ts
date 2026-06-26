@@ -54,6 +54,15 @@ export const ExportProposalInputSchema = z.object({
 
 export const TriggerGenerationInputSchema = z.object({
   ideaId: z.string().uuid(),
+  /** Force regeneration even if a completed document set already exists. */
+  force: z.boolean().optional(),
+});
+
+export const TriggerGenerationPublicInputSchema = z.object({
+  ideaId: z.string().uuid(),
+  referenceNumber: z.string().min(1).max(50),
+  /** Force regeneration even if a completed document set already exists. */
+  force: z.boolean().optional(),
 });
 
 export const RegenerateSectionInputSchema = z.object({

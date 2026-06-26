@@ -348,6 +348,7 @@ export class PipelineRepository {
     const transitions = await this.fetchStageTransitions(ideaData.id);
 
     return {
+      ideaId: ideaData.id,
       referenceNumber: ideaData.reference_number,
       title: ideaData.title,
       currentStage: ideaData.current_stage as Stage,

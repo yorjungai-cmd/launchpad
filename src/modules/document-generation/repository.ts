@@ -16,7 +16,7 @@
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { WatermarkStatus } from "@/shared/enums";
 import type {
   OutputDocument,
@@ -104,8 +104,13 @@ function mapRowToDocumentJob(row: DocumentJobRow): DocumentJob {
 // ─── Repository ───────────────────────────────────────────────────────────────
 
 export class DocumentGenerationRepository {
+  // Use admin client (service role). Document generation runs as a trusted
+  // server operation (inline, post-authz) and output_documents RLS only allows
+  // service_role to INSERT; guests have no anon SELECT policy. Authorization is
+  // enforced at the router/app layer (session check + reference-number match),
+  // mirroring AIAnalysisRepository.
   private getClient(): any {
-    return createServerSupabaseClient();
+    return createAdminSupabaseClient();
   }
 
   // ── output_documents ──────────────────────────────────────────────────────

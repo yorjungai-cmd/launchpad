@@ -10,6 +10,7 @@
 
 import { TRPCError } from "@trpc/server";
 import { router, publicProcedure, protectedProcedure, roleProcedure } from "@/server/trpc";
+import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { documentGenerationRepository } from "./repository";
 import { documentGenerationService } from "./service";
 import { exportMarkdown, exportHtml } from "@/lib/document-generation/exporter";
@@ -21,22 +22,49 @@ import {
   ExportDocumentInputSchema,
   ExportProposalInputSchema,
   TriggerGenerationInputSchema,
+  TriggerGenerationPublicInputSchema,
   RegenerateSectionInputSchema,
 } from "./schemas";
 import type { ClaudeNarrativeFn } from "./service";
 
 // ─── Guest reference number guard ────────────────────────────────────────────
+// Uses the admin client: guests have no session, and ideas RLS would block an
+// anon read of the reference number. The reference number itself is the secret
+// that authorizes guest access, so this lookup is safe server-side.
 
-async function verifyGuestAccess(
-  ideaId: string,
-  referenceNumber: string | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any
-): Promise<void> {
-  if (!referenceNumber) return; // authenticated user, skip
-  const { data } = await db.from("ideas").select("reference_number").eq("id", ideaId).single();
+async function verifyGuestAccess(ideaId: string, referenceNumber: string): Promise<void> {
+  const db = createAdminSupabaseClient();
+  const { data } = await db
+    .from("ideas")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .select("reference_number")
+    .eq("id", ideaId)
+    .single();
   if (!data || (data as { reference_number: string }).reference_number !== referenceNumber) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Reference number does not match." });
+  }
+}
+
+/**
+ * Authorization guard for document read procedures.
+ * Mirrors analysis.getByIdeaId: an authenticated session OR a matching
+ * reference number is required. Data access uses the admin client (service
+ * role), so this app-layer check is the security boundary.
+ */
+async function authorizeRead(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ctx: any,
+  ideaId: string,
+  referenceNumber: string | undefined
+): Promise<void> {
+  if (!ctx.session && !referenceNumber) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Sign in or provide a reference number to access documents.",
+    });
+  }
+  if (referenceNumber) {
+    await verifyGuestAccess(ideaId, referenceNumber);
   }
 }
 
@@ -51,11 +79,7 @@ export const documentRouter = router({
    * Supports both authenticated users (own ideas) and guests (referenceNumber).
    */
   listByIdea: publicProcedure.input(ListByIdeaInputSchema).query(async ({ input, ctx }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = (ctx as any).supabase;
-    if (input.referenceNumber) {
-      await verifyGuestAccess(input.ideaId, input.referenceNumber, db);
-    }
+    await authorizeRead(ctx, input.ideaId, input.referenceNumber);
 
     const documents = await documentGenerationRepository.findByIdea(input.ideaId);
     const allCompleted =
@@ -80,8 +104,6 @@ export const documentRouter = router({
    * Get a single document with rendered HTML preview.
    */
   get: publicProcedure.input(GetDocumentInputSchema).query(async ({ input, ctx }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = (ctx as any).supabase;
     const doc = await documentGenerationRepository.findOne(input.documentId);
     if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found." });
     if (doc.generationStatus !== "completed") {
@@ -91,9 +113,7 @@ export const documentRouter = router({
       });
     }
 
-    if (input.referenceNumber) {
-      await verifyGuestAccess(doc.ideaId, input.referenceNumber, db);
-    }
+    await authorizeRead(ctx, doc.ideaId, input.referenceNumber);
 
     const contentMarkdown = doc.contentEditedMarkdown ?? doc.contentMarkdown ?? "";
     const previewHtml = renderToHtmlSync(contentMarkdown);
@@ -113,11 +133,7 @@ export const documentRouter = router({
    * Get Project Proposal with all 10 sections.
    */
   getProposal: publicProcedure.input(GetProposalInputSchema).query(async ({ input, ctx }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = (ctx as any).supabase;
-    if (input.referenceNumber) {
-      await verifyGuestAccess(input.ideaId, input.referenceNumber, db);
-    }
+    await authorizeRead(ctx, input.ideaId, input.referenceNumber);
 
     const proposal = await documentGenerationRepository.findByIdeaAndType(
       input.ideaId,
@@ -155,17 +171,13 @@ export const documentRouter = router({
    * Export a single document as MD or self-contained HTML (on-demand, client download).
    */
   export: publicProcedure.input(ExportDocumentInputSchema).mutation(async ({ input, ctx }) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = (ctx as any).supabase;
     const doc = await documentGenerationRepository.findOne(input.documentId);
     if (!doc) throw new TRPCError({ code: "NOT_FOUND", message: "Document not found." });
     if (doc.generationStatus !== "completed") {
       throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Document not ready." });
     }
 
-    if (input.referenceNumber) {
-      await verifyGuestAccess(doc.ideaId, input.referenceNumber, db);
-    }
+    await authorizeRead(ctx, doc.ideaId, input.referenceNumber);
 
     const opts = {
       documentType: doc.documentType,
@@ -187,11 +199,7 @@ export const documentRouter = router({
   exportProposal: publicProcedure
     .input(ExportProposalInputSchema)
     .mutation(async ({ input, ctx }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = (ctx as any).supabase;
-      if (input.referenceNumber) {
-        await verifyGuestAccess(input.ideaId, input.referenceNumber, db);
-      }
+      await authorizeRead(ctx, input.ideaId, input.referenceNumber);
 
       const proposal = await documentGenerationRepository.findByIdeaAndType(
         input.ideaId,
@@ -217,13 +225,17 @@ export const documentRouter = router({
     }),
 
   /**
-   * Enqueue generation job for an idea (called after analysis complete or manual retry).
+   * Generate the full document set for an idea (runs INLINE / awaited).
+   *
+   * Production runs on Vercel serverless where background work is killed once
+   * the response is sent, so generation must complete within this request
+   * (separate 60s budget from the analysis request). Called automatically by
+   * the analysis UI once analysis completes, or manually as a retry.
    */
   triggerGeneration: protectedProcedure
     .input(TriggerGenerationInputSchema)
-    .mutation(async ({ input, ctx }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = (ctx as any).supabase;
+    .mutation(async ({ input }) => {
+      const db = createAdminSupabaseClient();
       const { data: analysis } = await db
         .from("ai_analyses")
         .select("id, processing_status")
@@ -240,12 +252,57 @@ export const documentRouter = router({
         });
       }
 
-      const result = await documentGenerationService.enqueueGeneration(
-        input.ideaId,
-        (analysis as { id: string }).id
-      );
+      const { runInlineDocumentGeneration } =
+        await import("@/lib/document-generation/inline-generate");
+      const result = await runInlineDocumentGeneration(input.ideaId, { force: input.force });
 
-      return { jobId: result.jobId, status: result.status };
+      return { status: result };
+    }),
+
+  /**
+   * Public (guest) variant of triggerGeneration — authorized by reference number.
+   * Runs INLINE / awaited, same as the protected variant. Used by the guest
+   * tracking page to generate documents if analysis is complete but none exist.
+   */
+  triggerGenerationPublic: publicProcedure
+    .input(TriggerGenerationPublicInputSchema)
+    .mutation(async ({ input }) => {
+      const db = createAdminSupabaseClient();
+
+      // Authorize: reference number must match the idea
+      const { data: idea } = await db
+        .from("ideas")
+        .select("reference_number")
+        .eq("id", input.ideaId)
+        .single();
+      if (
+        !idea ||
+        (idea as { reference_number: string }).reference_number !== input.referenceNumber
+      ) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Reference number does not match." });
+      }
+
+      // Analysis must be completed
+      const { data: analysis } = await db
+        .from("ai_analyses")
+        .select("processing_status")
+        .eq("idea_id", input.ideaId)
+        .single();
+      if (
+        !analysis ||
+        (analysis as { processing_status: string }).processing_status !== "completed"
+      ) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "AI analysis must be completed before generating documents.",
+        });
+      }
+
+      const { runInlineDocumentGeneration } =
+        await import("@/lib/document-generation/inline-generate");
+      const result = await runInlineDocumentGeneration(input.ideaId, { force: input.force });
+
+      return { status: result };
     }),
 
   /**

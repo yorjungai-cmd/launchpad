@@ -25,6 +25,7 @@ import { api } from "@/lib/trpc/client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { AnalysisResultView } from "./AnalysisResultView";
+import { DocumentGenerationSection } from "@/components/document-generation/document-generation-section";
 import type { AIAnalysis } from "@/modules/ai-analysis/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -217,6 +218,7 @@ export function AnalysisStatusPoller({ ideaId, userRole }: AnalysisStatusPollerP
       className="flex flex-col gap-6"
     >
       <AnalysisResultView analysis={analysis as AIAnalysis} userRole={userRole} />
+      <DocumentGenerationSection ideaId={ideaId} analysisCompleted />
     </div>
   );
 }

@@ -82,8 +82,13 @@ export type StatusCardDTO = z.infer<typeof StatusCardDTOSchema>;
 // ─── GuestTrackingDTO ─────────────────────────────────────────────────────────
 // Intentionally omits: assignedReviewer, submitterType, watermarkStatus
 // — masked at application layer (PipelineService) for privacy.
+// Includes ideaId so the guest can fetch/generate their own documents
+// (document access is still gated by a matching referenceNumber).
 
 export const GuestTrackingDTOSchema = z.object({
+  /** Internal idea UUID — needed for document access (gated by referenceNumber).
+   *  May be empty string if resolution failed; UI must guard before use. */
+  ideaId: z.string(),
   referenceNumber: z.string(),
   title: z.string(),
   currentStage: z.nativeEnum(Stage),
