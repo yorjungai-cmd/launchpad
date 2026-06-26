@@ -26,9 +26,19 @@ async function getPdfParse() {
 import mammoth from "mammoth";
 import officeparser from "officeparser";
 import * as cheerio from "cheerio";
-import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+// jsdom and @mozilla/readability MUST be lazy-imported to prevent Next.js bundler
+// from including them in the serverless function bundle. jsdom@29 depends on
+// html-encoding-sniffer@6 which uses @exodus/bytes (ESM-only) and cannot be
+// loaded via require() in the Vercel Node.js runtime.
+async function getJSDOMAndReadability() {
+  const [{ JSDOM }, { Readability }] = await Promise.all([
+    import("jsdom"),
+    import("@mozilla/readability"),
+  ]);
+  return { JSDOM, Readability };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -231,7 +241,8 @@ async function _doUrlExtraction(url: string): Promise<ExtractResult> {
 
   const cleanedHtml = $.html();
 
-  // 4. Run Readability
+  // 4. Run Readability (lazy-load jsdom + readability to avoid ESM bundling issue)
+  const { JSDOM, Readability } = await getJSDOMAndReadability();
   const dom = new JSDOM(cleanedHtml, { url });
   const reader = new Readability(dom.window.document);
   const article = reader.parse();
