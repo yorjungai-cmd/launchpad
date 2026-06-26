@@ -114,12 +114,14 @@ export class ApiKeyService {
 
     const db = createAdminSupabaseClient();
     const maskedKey = this._maskKey(key);
-    const keyName = `${provider}:${name}`;
+    // Add timestamp suffix to vault name to prevent duplicate constraint errors
+    // when the same key name is re-saved after a failed attempt
+    const vaultKeyName = `${provider}:${name}:${Date.now()}`;
 
     // ── 2. Store plaintext in Vault ────────────────────────────────────────
     const { data: vaultId, error: vaultErr } = await db.rpc("vault_create_secret", {
       secret: key,
-      name: keyName,
+      name: vaultKeyName,
     });
 
     if (vaultErr || !vaultId) {
