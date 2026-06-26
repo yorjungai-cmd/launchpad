@@ -39,13 +39,15 @@ const PROTECTED_PATTERN = /^\/[^/]+\/(?!auth|_next|api)(.*)/;
 
 /**
  * Routes that are always public — no auth check required.
- * Auth pages, public route group, API routes.
+ * Auth pages, public route group paths, API routes.
  */
 const PUBLIC_PATTERNS = [
   /^\/[^/]+\/auth(\/.*)?$/, // /[locale]/auth/* (sign-in, callback…)
-  /^\/[^/]+\/(public)(\/.*)?$/, // /[locale]/(public)/*
+  /^\/[^/]+\/submit$/, // /[locale]/submit (idea submission)
+  /^\/[^/]+\/track(\/.*)?$/, // /[locale]/track/* (guest tracking)
   /^\/api\/trpc(\/.*)?$/, // /api/trpc/*
   /^\/_next(\/.*)?$/, // Next.js internals
+  /^\/[^/]+$/, // /[locale] (home page)
 ];
 
 function isPublicPath(pathname: string): boolean {
