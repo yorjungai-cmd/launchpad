@@ -28,17 +28,11 @@ import officeparser from "officeparser";
 import * as cheerio from "cheerio";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-// jsdom and @mozilla/readability MUST be lazy-imported to prevent Next.js bundler
-// from including them in the serverless function bundle. jsdom@29 depends on
-// html-encoding-sniffer@6 which uses @exodus/bytes (ESM-only) and cannot be
-// loaded via require() in the Vercel Node.js runtime.
-async function getJSDOMAndReadability() {
-  const [{ JSDOM }, { Readability }] = await Promise.all([
-    import("jsdom"),
-    import("@mozilla/readability"),
-  ]);
-  return { JSDOM, Readability };
-}
+// NOTE: jsdom and @mozilla/readability are intentionally NOT imported.
+// jsdom@29 depends on html-encoding-sniffer@6 → @exodus/bytes (ESM-only),
+// which crashes in Vercel serverless with ERR_REQUIRE_ESM even with lazy import
+// because Next.js serverExternalPackages still require()s them at runtime.
+// URL content extraction uses cheerio-only pipeline instead.
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -276,13 +270,13 @@ async function _doUrlExtraction(url: string): Promise<ExtractResult> {
     };
   }
 
-  // 2. Fetch HTML with abort signal
-  const controller = new AbortController();
+  // 2. Fetch HTML
   const response = await fetch(url, {
-    signal: controller.signal,
     headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; LaunchPadBot/1.0; +https://launchpad.applcad.com)",
+      "User-Agent": "Mozilla/5.0 (compatible; LaunchPadBot/1.0)",
+      Accept: "text/html,application/xhtml+xml",
     },
+    signal: AbortSignal.timeout(URL_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -293,35 +287,45 @@ async function _doUrlExtraction(url: string): Promise<ExtractResult> {
   }
 
   const html = await response.text();
-
   if (!html || html.trim().length === 0) {
     return { status: "failed", error: "Empty response from URL" };
   }
 
-  // 3. Parse HTML with cheerio to clean it up, then use Readability
+  // 3. Extract text with cheerio only (no jsdom — ERR_REQUIRE_ESM on Vercel)
+  //    Priority: <article> → <main> → <body> → whole doc
   const $ = cheerio.load(html);
 
-  // Remove script/style noise before Readability
-  $("script, style, noscript, iframe").remove();
+  // Remove noise elements
+  $(
+    "script, style, noscript, iframe, nav, header, footer, " +
+      "[role=navigation], [role=banner], [role=contentinfo], " +
+      ".nav, .navbar, .header, .footer, .sidebar, .menu, .ad, .ads, .advertisement"
+  ).remove();
 
-  const cleanedHtml = $.html();
+  // Try semantic containers first for better signal-to-noise ratio
+  let rawText =
+    $("article").text() ||
+    $("main").text() ||
+    $("[role=main]").text() ||
+    $(".content, .main-content, .post-content, .entry-content, .article-content").first().text() ||
+    $("body").text() ||
+    $.root().text();
 
-  // 4. Run Readability (lazy-load jsdom + readability to avoid ESM bundling issue)
-  const { JSDOM, Readability } = await getJSDOMAndReadability();
-  const dom = new JSDOM(cleanedHtml, { url });
-  const reader = new Readability(dom.window.document);
-  const article = reader.parse();
+  // Normalise whitespace
+  rawText = rawText
+    .replace(/\s+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
-  if (!article || !article.textContent || article.textContent.trim().length === 0) {
+  if (rawText.length < 50) {
     return {
       status: "failed",
       error: "Could not extract readable content from URL",
     };
   }
 
-  // 5. Truncate and return
-  const cleaned = article.textContent.trim();
-  const { text, truncated } = truncate(cleaned, URL_MAX_CHARS);
+  // 4. Truncate and return
+  const { text, truncated } = truncate(rawText, URL_MAX_CHARS);
 
   return {
     status: "success",
