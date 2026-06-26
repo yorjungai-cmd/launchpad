@@ -1,26 +1,33 @@
 /**
- * inline-worker.ts — Synchronous AI analysis worker for Vercel serverless.
+ * inline-worker.ts — Multi-provider AI analysis worker for Vercel serverless.
  *
- * Runs Claude analysis inline within the tRPC request (fire-and-forget from
- * the caller's perspective via setImmediate). No Edge Function or pgmq required.
+ * Supports all providers configured in Admin Settings:
+ *   - anthropic    → Anthropic SDK (tool use / structured output)
+ *   - openrouter   → Anthropic SDK with custom baseURL (OpenAI-compatible)
+ *   - google       → Google Generative Language REST API (function calling)
+ *   - aws_bedrock  → AWS SDK BedrockRuntime (converse API with tool use)
  *
  * Flow:
- *   1. Read idea content from DB
- *   2. Read active API key from api_keys → Supabase Vault
- *   3. Call Claude via Anthropic SDK (tool use)
- *   4. Validate response with Zod
- *   5. Persist result to ai_analyses
- *   6. Update ideas.analysis_status
- *
- * Called from ideaSubmissionService.submitIdea() as fire-and-forget.
+ *   1. Read analysisModel from system_settings.ai_config
+ *   2. Find active API key matching the model's provider
+ *   3. Dispatch to provider-specific caller
+ *   4. Normalize response → ClaudeAnalysisOutput shape
+ *   5. Persist result to ai_analyses + update ideas.analysis_status
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type Tool as BedrockTool,
+} from "@aws-sdk/client-bedrock-runtime";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { buildAnalysisPrompt } from "./prompt-builder";
 import { ClaudeAnalysisOutputSchema } from "@/modules/ai-analysis/schemas";
 import { aiAnalysisRepository } from "@/modules/ai-analysis/repository";
+import { ANALYSIS_TOOL_DEFINITION } from "./prompts/analysis-tool-definition";
 import logger from "@/lib/logger";
+import type { ClaudeAnalysisOutput } from "@/modules/ai-analysis/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,82 +39,94 @@ interface IdeaForAnalysis {
   input_type: string;
 }
 
+interface ActiveKeyInfo {
+  apiKey: string;
+  provider: "anthropic" | "openrouter" | "google" | "aws_bedrock";
+  model: string;
+}
+
+// ─── Provider → model prefix mapping ─────────────────────────────────────────
+
+/** Detect which provider a model ID belongs to */
+function detectProviderFromModel(modelId: string): ActiveKeyInfo["provider"] {
+  if (
+    modelId.startsWith("anthropic.") ||
+    modelId.startsWith("us.anthropic.") ||
+    modelId.startsWith("amazon.nova") ||
+    modelId.includes("bedrock")
+  )
+    return "aws_bedrock";
+  if (modelId.startsWith("gemini") || modelId.startsWith("models/gemini")) return "google";
+  if (modelId.includes("/") && !modelId.startsWith("claude")) return "openrouter";
+  return "anthropic";
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-/**
- * runInlineAnalysis — fetches idea, calls Claude, persists result.
- * Never throws — all errors are caught and logged.
- */
 export async function runInlineAnalysis(ideaId: string): Promise<void> {
   const db = createAdminSupabaseClient();
 
   try {
-    // 1. Create pending ai_analyses row (idempotent — skip if exists)
+    // 1. Create pending ai_analyses row (idempotent)
     try {
       await aiAnalysisRepository.create(ideaId);
     } catch {
-      // Row may already exist from a previous attempt — continue
+      // already exists — continue
     }
-
     await aiAnalysisRepository.updateStatus(ideaId, "processing");
 
-    // 2. Fetch idea content
+    // 2. Fetch idea
     const { data: idea, error: ideaErr } = await db
       .from("ideas")
       .select("id, title, raw_content, extracted_text, input_type")
       .eq("id", ideaId)
       .single();
-
-    if (ideaErr || !idea) {
-      throw new Error(`Idea not found: ${ideaErr?.message ?? "no row"}`);
-    }
-
+    if (ideaErr || !idea) throw new Error(`Idea not found: ${ideaErr?.message ?? "no row"}`);
     const row = idea as unknown as IdeaForAnalysis;
 
-    // 3. Get active API key from vault (supports anthropic + openrouter)
-    const keyInfo = await _getActiveApiKeyInfo(db);
-    if (!keyInfo) {
-      throw new Error("No active API key found. Please configure one in Settings → API Keys.");
-    }
+    // 3. Read AI config + find matching active key
+    const keyInfo = await _resolveKeyInfo(db);
+    if (!keyInfo) throw new Error("No active API key found. Configure one in Settings → API Keys.");
 
-    // 4. Build prompt and call Claude
-    const description = row.raw_content ?? "";
-    const extractedText = row.extracted_text ?? "";
-    const inputType = (row.input_type as "text" | "file" | "url") ?? "text";
-
+    // 4. Build prompt
     const promptParams = buildAnalysisPrompt({
       title: row.title,
-      description,
-      extractedText,
-      inputType,
+      description: row.raw_content ?? "",
+      extractedText: row.extracted_text ?? "",
+      inputType: (row.input_type as "text" | "file" | "url") ?? "text",
     });
 
-    const response = await _callClaude(keyInfo, promptParams);
-
-    // 5. Extract tool use result
-    const toolUseBlock = response.content.find((b) => b.type === "tool_use");
-    if (!toolUseBlock || toolUseBlock.type !== "tool_use") {
-      throw new Error("Claude did not return a tool_use block");
+    // 5. Call provider
+    let parsed: ClaudeAnalysisOutput;
+    switch (keyInfo.provider) {
+      case "anthropic":
+        parsed = await _callAnthropic(keyInfo, promptParams);
+        break;
+      case "openrouter":
+        parsed = await _callOpenRouter(keyInfo, promptParams);
+        break;
+      case "google":
+        parsed = await _callGoogle(keyInfo, promptParams);
+        break;
+      case "aws_bedrock":
+        parsed = await _callBedrock(keyInfo, promptParams);
+        break;
     }
 
-    // 6. Validate with Zod
-    const parsed = ClaudeAnalysisOutputSchema.parse(toolUseBlock.input);
-
-    // 7. Persist result
+    // 6. Persist
     await aiAnalysisRepository.updateFromWorkerResult(ideaId, parsed);
-
-    // 8. Update ideas.analysis_status = 'analysis_complete'
     await db
       .from("ideas")
       .update({ analysis_status: "analysis_complete" as const })
       .eq("id", ideaId);
 
-    logger.info({ ideaId }, "runInlineAnalysis: completed successfully");
+    logger.info(
+      { ideaId, provider: keyInfo.provider, model: keyInfo.model },
+      "runInlineAnalysis: completed"
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({ ideaId, err: msg }, "runInlineAnalysis: failed");
-
-    // Mark as failed in DB so UI can show appropriate state
     try {
       await aiAnalysisRepository.updateStatus(ideaId, "failed", msg);
       await db
@@ -115,75 +134,86 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
         .update({ analysis_status: "failed" as const })
         .eq("id", ideaId);
     } catch {
-      // Best-effort — don't throw from error handler
+      /* best-effort */
     }
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Key + Config resolution ──────────────────────────────────────────────────
 
-interface ActiveKeyInfo {
-  apiKey: string;
-  provider: string;
-}
-
-/**
- * Get active API key info. Prefers Anthropic, falls back to OpenRouter,
- * then env var ANTHROPIC_API_KEY.
- */
-async function _getActiveApiKeyInfo(
+async function _resolveKeyInfo(
   db: ReturnType<typeof createAdminSupabaseClient>
 ): Promise<ActiveKeyInfo | null> {
-  // Try anthropic first, then any active key
-  for (const provider of ["anthropic", "openrouter", "google"]) {
+  // Read analysisModel from system_settings
+  const { data: settings } = await db
+    .from("system_settings")
+    .select("ai_config")
+    .limit(1)
+    .maybeSingle();
+
+  const aiConfig = settings?.ai_config as Record<string, string> | null;
+  const analysisModel = aiConfig?.analysisModel ?? "";
+
+  // Determine target provider from model ID
+  const targetProvider = analysisModel ? detectProviderFromModel(analysisModel) : null;
+
+  // Find active key: prefer key matching target provider, fallback to any active key
+  const providers: ActiveKeyInfo["provider"][] = targetProvider
+    ? [targetProvider, "anthropic", "openrouter", "google", "aws_bedrock"]
+    : ["anthropic", "openrouter", "google", "aws_bedrock"];
+
+  for (const p of providers) {
     const { data: keyRow } = await db
       .from("api_keys")
       .select("vault_id, provider")
-      .eq("provider", provider)
+      .eq("provider", p)
       .eq("is_active", true)
       .limit(1)
       .maybeSingle();
 
     if (keyRow) {
-      const plaintext = await _readVaultSecret(
-        db,
-        (keyRow as { vault_id: string; provider: string }).vault_id
-      );
+      const plaintext = await _readVaultSecret(db, (keyRow as { vault_id: string }).vault_id);
       if (plaintext) {
-        return {
-          apiKey: plaintext,
-          provider: (keyRow as { vault_id: string; provider: string }).provider,
-        };
+        const provider = (keyRow as { provider: string }).provider as ActiveKeyInfo["provider"];
+        // Pick best model for this provider
+        const model = _selectModel(analysisModel, provider);
+        return { apiKey: plaintext, provider, model };
       }
     }
   }
 
-  // Fallback: try any active key
-  const { data: anyKey } = await db
-    .from("api_keys")
-    .select("vault_id, provider")
-    .eq("is_active", true)
-    .limit(1)
-    .maybeSingle();
-
-  if (anyKey) {
-    const plaintext = await _readVaultSecret(
-      db,
-      (anyKey as { vault_id: string; provider: string }).vault_id
-    );
-    if (plaintext) {
-      return {
-        apiKey: plaintext,
-        provider: (anyKey as { vault_id: string; provider: string }).provider,
-      };
-    }
+  // Last resort: ANTHROPIC_API_KEY env var
+  const envKey = process.env["ANTHROPIC_API_KEY"];
+  if (envKey) {
+    return {
+      apiKey: envKey,
+      provider: "anthropic",
+      model: _selectModel(analysisModel, "anthropic"),
+    };
   }
 
-  // Last resort: env var
-  const envKey = process.env["ANTHROPIC_API_KEY"];
-  if (envKey) return { apiKey: envKey, provider: "anthropic" };
-
   return null;
+}
+
+/** Select best model: use configured if matches provider, else provider default */
+function _selectModel(configuredModel: string, provider: ActiveKeyInfo["provider"]): string {
+  if (!configuredModel) return _defaultModel(provider);
+  const detectedProvider = detectProviderFromModel(configuredModel);
+  if (detectedProvider === provider) return configuredModel;
+  return _defaultModel(provider);
+}
+
+function _defaultModel(provider: ActiveKeyInfo["provider"]): string {
+  switch (provider) {
+    case "anthropic":
+      return "claude-haiku-4-5";
+    case "openrouter":
+      return "anthropic/claude-haiku-4-5";
+    case "google":
+      return "gemini-1.5-flash";
+    case "aws_bedrock":
+      return "us.anthropic.claude-haiku-4-5-20251014-v1:0";
+  }
 }
 
 async function _readVaultSecret(
@@ -192,7 +222,7 @@ async function _readVaultSecret(
 ): Promise<string | null> {
   try {
     const { data } = await db
-      .from("vault.decrypted_secrets" as "api_keys") // type cast workaround
+      .from("vault.decrypted_secrets" as "api_keys")
       .select("decrypted_secret")
       .eq("id", vaultId)
       .single();
@@ -202,33 +232,167 @@ async function _readVaultSecret(
   }
 }
 
-/**
- * Call Claude API — supports Anthropic direct and OpenRouter (same SDK, different baseURL).
- */
-async function _callClaude(
-  keyInfo: ActiveKeyInfo,
-  promptParams: ReturnType<typeof buildAnalysisPrompt>
-): Promise<Anthropic.Message> {
-  const clientOpts: ConstructorParameters<typeof Anthropic>[0] = {
-    apiKey: keyInfo.apiKey,
-  };
+// ─── Provider callers ─────────────────────────────────────────────────────────
 
-  if (keyInfo.provider === "openrouter") {
-    clientOpts.baseURL = "https://openrouter.ai/api/v1";
-    clientOpts.defaultHeaders = {
+type PromptParams = ReturnType<typeof buildAnalysisPrompt>;
+
+/** Parse tool use block from Anthropic-compatible response */
+function _parseAnthropicToolBlock(content: Anthropic.ContentBlock[]): ClaudeAnalysisOutput {
+  const toolBlock = content.find((b) => b.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("No tool_use block in response");
+  return ClaudeAnalysisOutputSchema.parse(toolBlock.input);
+}
+
+// ── Anthropic direct ──────────────────────────────────────────────────────────
+
+async function _callAnthropic(
+  keyInfo: ActiveKeyInfo,
+  prompt: PromptParams
+): Promise<ClaudeAnalysisOutput> {
+  const client = new Anthropic({ apiKey: keyInfo.apiKey });
+  const resp = await client.messages.create({
+    model: keyInfo.model,
+    max_tokens: 4096,
+    system: prompt.system,
+    messages: [...prompt.messages],
+    tools: [...prompt.tools] as Anthropic.Tool[],
+    tool_choice: prompt.tool_choice,
+  });
+  return _parseAnthropicToolBlock(resp.content);
+}
+
+// ── OpenRouter ────────────────────────────────────────────────────────────────
+
+async function _callOpenRouter(
+  keyInfo: ActiveKeyInfo,
+  prompt: PromptParams
+): Promise<ClaudeAnalysisOutput> {
+  const client = new Anthropic({
+    apiKey: keyInfo.apiKey,
+    baseURL: "https://openrouter.ai/api/v1",
+    defaultHeaders: {
       "HTTP-Referer": "https://launchpad-portal-three.vercel.app",
       "X-Title": "LaunchPad Portal",
-    };
+    },
+  });
+  const resp = await client.messages.create({
+    model: keyInfo.model,
+    max_tokens: 4096,
+    system: prompt.system,
+    messages: [...prompt.messages],
+    tools: [...prompt.tools] as Anthropic.Tool[],
+    tool_choice: prompt.tool_choice,
+  });
+  return _parseAnthropicToolBlock(resp.content);
+}
+
+// ── Google Gemini (REST) ──────────────────────────────────────────────────────
+
+async function _callGoogle(
+  keyInfo: ActiveKeyInfo,
+  prompt: PromptParams
+): Promise<ClaudeAnalysisOutput> {
+  const modelId = keyInfo.model.startsWith("models/") ? keyInfo.model : `models/${keyInfo.model}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/${modelId}:generateContent?key=${keyInfo.apiKey}`;
+
+  // Convert Anthropic tool definition to Google function declaration
+  const functionDeclaration = {
+    name: ANALYSIS_TOOL_DEFINITION.name,
+    description: ANALYSIS_TOOL_DEFINITION.description,
+    parameters: ANALYSIS_TOOL_DEFINITION.input_schema,
+  };
+
+  const body = {
+    system_instruction: { parts: [{ text: prompt.system }] },
+    contents: prompt.messages.map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    })),
+    tools: [{ functionDeclarations: [functionDeclaration] }],
+    tool_config: {
+      function_calling_config: { mode: "ANY", allowed_function_names: ["analyze_idea"] },
+    },
+    generation_config: { max_output_tokens: 4096 },
+  };
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(55_000),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Google API error ${resp.status}: ${text}`);
   }
 
-  const anthropic = new Anthropic(clientOpts);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (await resp.json()) as any;
+  const parts = data?.candidates?.[0]?.content?.parts ?? [];
+  const fnCall = parts.find((p: { functionCall?: unknown }) => p.functionCall);
+  if (!fnCall?.functionCall?.args) throw new Error("Google response missing functionCall.args");
 
-  return anthropic.messages.create({
-    model: keyInfo.provider === "openrouter" ? "anthropic/claude-haiku-4-5" : "claude-haiku-4-5",
-    max_tokens: 4096,
-    system: promptParams.system,
-    messages: [...promptParams.messages],
-    tools: [...promptParams.tools] as Anthropic.Tool[],
-    tool_choice: promptParams.tool_choice,
+  return ClaudeAnalysisOutputSchema.parse(fnCall.functionCall.args);
+}
+
+// ── AWS Bedrock (Converse API) ────────────────────────────────────────────────
+
+async function _callBedrock(
+  keyInfo: ActiveKeyInfo,
+  prompt: PromptParams
+): Promise<ClaudeAnalysisOutput> {
+  // Parse AWS credentials from key format: "ACCESS_KEY_ID|SECRET_ACCESS_KEY[|REGION]"
+  const parts = keyInfo.apiKey.split("|");
+  if (parts.length < 2)
+    throw new Error(
+      "AWS Bedrock key must be formatted as 'ACCESS_KEY_ID|SECRET_ACCESS_KEY' or 'ACCESS_KEY_ID|SECRET_ACCESS_KEY|REGION'"
+    );
+
+  const [accessKeyId, secretAccessKey, region = "us-east-1"] = parts;
+
+  const client = new BedrockRuntimeClient({
+    region,
+    credentials: {
+      accessKeyId: accessKeyId!,
+      secretAccessKey: secretAccessKey!,
+    },
   });
+
+  // Build Bedrock tool definition
+  const bedrockTool: BedrockTool = {
+    toolSpec: {
+      name: ANALYSIS_TOOL_DEFINITION.name,
+      description: ANALYSIS_TOOL_DEFINITION.description,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      inputSchema: { json: ANALYSIS_TOOL_DEFINITION.input_schema as any },
+    },
+  };
+
+  const command = new ConverseCommand({
+    modelId: keyInfo.model,
+    system: [{ text: prompt.system }],
+    messages: prompt.messages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: [{ text: m.content }],
+    })),
+    toolConfig: {
+      tools: [bedrockTool],
+      toolChoice: { tool: { name: "analyze_idea" } },
+    },
+    inferenceConfig: { maxTokens: 4096 },
+  });
+
+  const resp = await client.send(command);
+
+  // Find tool use block in response
+  const content = resp.output?.message?.content ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const toolUse = content.find((b: any) => b.toolUse !== undefined) as
+    | { toolUse: { input: unknown } }
+    | undefined;
+
+  if (!toolUse?.toolUse?.input) throw new Error("Bedrock response missing toolUse block");
+
+  return ClaudeAnalysisOutputSchema.parse(toolUse.toolUse.input);
 }
