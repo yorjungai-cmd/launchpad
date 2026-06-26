@@ -205,7 +205,7 @@ function _defaultModel(provider: ActiveKeyInfo["provider"]): string {
     case "anthropic":
       return "claude-haiku-4-5";
     case "openrouter":
-      return "anthropic/claude-haiku-4-5";
+      return "anthropic/claude-haiku-4.5";
     case "google":
       return "gemini-1.5-flash";
     case "aws_bedrock":
@@ -260,29 +260,69 @@ async function _callAnthropic(
   return _parseAnthropicToolBlock(resp.content);
 }
 
-// ── OpenRouter ────────────────────────────────────────────────────────────────
+// ── OpenRouter (OpenAI-compatible chat completions + tool calling) ────────────
 
 async function _callOpenRouter(
   keyInfo: ActiveKeyInfo,
   prompt: PromptParams
 ): Promise<ClaudeAnalysisOutput> {
-  const client = new Anthropic({
-    apiKey: keyInfo.apiKey,
-    baseURL: "https://openrouter.ai/api/v1",
-    defaultHeaders: {
+  // OpenRouter uses OpenAI-compatible /chat/completions, NOT Anthropic /messages.
+  // Convert the Anthropic tool definition to OpenAI function-calling format.
+  const tool = {
+    type: "function" as const,
+    function: {
+      name: ANALYSIS_TOOL_DEFINITION.name,
+      description: ANALYSIS_TOOL_DEFINITION.description,
+      parameters: ANALYSIS_TOOL_DEFINITION.input_schema,
+    },
+  };
+
+  const messages = [
+    { role: "system" as const, content: prompt.system },
+    ...prompt.messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${keyInfo.apiKey}`,
+      "Content-Type": "application/json",
       "HTTP-Referer": "https://launchpad-portal-three.vercel.app",
       "X-Title": "LaunchPad Portal",
     },
+    body: JSON.stringify({
+      model: _toOpenRouterModel(keyInfo.model),
+      max_tokens: 4096,
+      messages,
+      tools: [tool],
+      tool_choice: { type: "function", function: { name: "analyze_idea" } },
+    }),
+    signal: AbortSignal.timeout(55_000),
   });
-  const resp = await client.messages.create({
-    model: keyInfo.model,
-    max_tokens: 4096,
-    system: prompt.system,
-    messages: [...prompt.messages],
-    tools: [...prompt.tools] as Anthropic.Tool[],
-    tool_choice: prompt.tool_choice,
-  });
-  return _parseAnthropicToolBlock(resp.content);
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`OpenRouter error ${resp.status}: ${text.slice(0, 300)}`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (await resp.json()) as any;
+  const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
+  if (!toolCall?.function?.arguments) {
+    throw new Error("OpenRouter response missing tool_calls");
+  }
+  const args = JSON.parse(toolCall.function.arguments);
+  return ClaudeAnalysisOutputSchema.parse(args);
+}
+
+/** Normalise model id to OpenRouter format (uses dots: claude-haiku-4.5, with provider prefix) */
+function _toOpenRouterModel(model: string): string {
+  // Already in openrouter format (has provider prefix)
+  if (model.includes("/")) return model;
+  // Convert "claude-haiku-4-5" → "anthropic/claude-haiku-4.5"
+  const normalised = model.replace(/-(\d+)-(\d+)$/, "-$1.$2");
+  if (normalised.startsWith("claude")) return `anthropic/${normalised}`;
+  return normalised;
 }
 
 // ── Google Gemini (REST) ──────────────────────────────────────────────────────
