@@ -212,7 +212,7 @@ export const documentRouter = router({
 
       const opts = {
         documentType: "project_proposal",
-        title: "Project Proposal (Complete)",
+        title: "ข้อเสนอโครงการ (ฉบับสมบูรณ์)",
         contentMarkdown: proposal.contentMarkdown,
         contentEditedMarkdown: proposal.contentEditedMarkdown,
         watermarkStatus: proposal.watermarkStatus,

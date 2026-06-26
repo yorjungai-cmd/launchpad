@@ -238,21 +238,21 @@ export class DocumentGenerationService {
       {
         key: "executive_summary",
         order: 1,
-        title: "Executive Summary",
+        title: "บทสรุปผู้บริหาร",
         sourceRef: "ai_analysis.summary",
         needsNarrative: true,
       },
       {
         key: "problem_opportunity",
         order: 2,
-        title: "Problem & Opportunity",
+        title: "ปัญหาและโอกาส",
         sourceRef: "ai_analysis.summary",
         needsNarrative: true,
       },
       {
         key: "proposed_solution",
         order: 3,
-        title: "Proposed Solution",
+        title: "แนวทางแก้ไขที่นำเสนอ",
         sourceRef: "ai_analysis.summary",
         needsNarrative: true,
       },
@@ -266,42 +266,42 @@ export class DocumentGenerationService {
       {
         key: "feasibility_assessment",
         order: 5,
-        title: "Feasibility Assessment",
+        title: "การประเมินความเป็นไปได้",
         sourceRef: "ai_analysis.feasibility",
         needsNarrative: false,
       },
       {
         key: "launch_pad_plan",
         order: 6,
-        title: "Launch PAD Plan",
+        title: "แผน Launch PAD",
         sourceRef: "ai_analysis.stage",
         needsNarrative: true,
       },
       {
         key: "stage_gate_guide",
         order: 7,
-        title: "Stage Gate Guide",
+        title: "คู่มือ Stage Gate",
         sourceRef: "ai_analysis.stage",
         needsNarrative: false,
       },
       {
         key: "resource_investment",
         order: 8,
-        title: "Resource & Investment",
+        title: "ทรัพยากรและการลงทุน",
         sourceRef: "ai_analysis.feasibility",
         needsNarrative: true,
       },
       {
         key: "expected_outcomes",
         order: 9,
-        title: "Expected Outcomes & Metrics",
+        title: "ผลลัพธ์ที่คาดหวังและตัวชี้วัด",
         sourceRef: "ai_analysis.feasibility",
         needsNarrative: true,
       },
       {
         key: "next_steps",
         order: 10,
-        title: "Next Steps",
+        title: "ขั้นตอนถัดไป",
         sourceRef: "ai_analysis.stage",
         needsNarrative: true,
       },
@@ -310,15 +310,15 @@ export class DocumentGenerationService {
     // Deterministic sections content
     const deterministicContent: Record<string, string> = {
       feasibility_assessment:
-        `| Dimension | Score | Recommended Action |\n|---|---|---|\n` +
-        `| Strategic Fit | ${analysis.strategicFitScore ?? "N/A"}/5 | |\n` +
-        `| Market Potential | ${analysis.marketPotentialScore ?? "N/A"}/5 | |\n` +
-        `| Technical Feasibility | ${analysis.technicalFeasibilityScore ?? "N/A"}/5 | |\n` +
-        `| Resource Requirement | ${analysis.resourceRequirementScore ?? "N/A"}/5 | |\n` +
-        `| Business Impact | ${analysis.businessImpactScore ?? "N/A"}/5 | |\n\n` +
-        `**Recommended Action**: ${analysis.recommendedAction ?? "Pending"}`,
-      stage_gate_guide: `_See Stage Gate Guide document for detailed criteria._`,
-      bmc: `_See Business Model Canvas document for the full canvas._`,
+        `| มิติ | คะแนน | ข้อเสนอแนะ |\n|---|---|---|\n` +
+        `| ความสอดคล้องเชิงกลยุทธ์ | ${analysis.strategicFitScore ?? "N/A"}/5 | |\n` +
+        `| ศักยภาพตลาด | ${analysis.marketPotentialScore ?? "N/A"}/5 | |\n` +
+        `| ความเป็นไปได้ทางเทคนิค | ${analysis.technicalFeasibilityScore ?? "N/A"}/5 | |\n` +
+        `| ความต้องการทรัพยากร | ${analysis.resourceRequirementScore ?? "N/A"}/5 | |\n` +
+        `| ผลกระทบทางธุรกิจ | ${analysis.businessImpactScore ?? "N/A"}/5 | |\n\n` +
+        `**ข้อเสนอแนะ**: ${analysis.recommendedAction ?? "รอพิจารณา"}`,
+      stage_gate_guide: `_ดูรายละเอียดเกณฑ์ใน เอกสารคู่มือ Stage Gate_`,
+      bmc: `_ดู canvas ฉบับเต็มใน เอกสาร Business Model Canvas_`,
     };
 
     // Get narrative sections via Claude
@@ -369,7 +369,7 @@ export class DocumentGenerationService {
       analysisId,
       documentType: "project_proposal",
       stageSnapshot: stageDisplay,
-      title: "Project Proposal (Complete)",
+      title: "ข้อเสนอโครงการ (ฉบับสมบูรณ์)",
       contentMarkdown: composedMarkdown,
       sections: proposalSections,
       watermarkStatus: WatermarkStatus.AI_DRAFT,

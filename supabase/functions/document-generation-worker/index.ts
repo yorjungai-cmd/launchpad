@@ -131,7 +131,7 @@ SECTIONS TO WRITE: ${sectionKeys.join(", ")}`;
     ],
     tool_choice: { type: "tool", name: "write_sections" },
     system:
-      "You are a business analyst at AppliCAD. Write professional, concise document sections in the same language as the idea content (Thai or English).",
+      "You are a business analyst at AppliCAD. ALWAYS write the document sections in Thai (ภาษาไทย), regardless of the idea's input language. Product names and established framework/technical terms may stay in English. Be professional and concise.",
     messages: [{ role: "user", content: context }],
   });
 
@@ -199,17 +199,17 @@ async function generateAndPersist(
 // ─── Document type helpers ───────────────────────────────────────────────────
 
 const DOC_TITLES: Record<string, string> = {
-  feasibility_report: "Feasibility Report",
-  bmc: "Business Model Canvas",
-  launch_pad_plan: "Launch PAD Plan",
-  poc_proposal: "POC Proposal",
-  stage_gate_guide: "Stage Gate Evaluation Guide",
-  project_requirements: "Project Requirements Document",
-  action_plan: "Action Plan",
-  resource_plan: "Resource Plan",
-  gtm_summary: "GTM Summary",
-  executive_presentation: "Executive Presentation",
-  project_proposal: "Project Proposal (Complete)",
+  feasibility_report: "รายงานความเป็นไปได้ (Feasibility Report)",
+  bmc: "Business Model Canvas (BMC)",
+  launch_pad_plan: "แผน Launch PAD",
+  poc_proposal: "ข้อเสนอ POC (Proof of Concept)",
+  stage_gate_guide: "คู่มือประเมิน Stage Gate",
+  project_requirements: "เอกสารข้อกำหนดโครงการ (Requirements)",
+  action_plan: "แผนปฏิบัติการ (Action Plan)",
+  resource_plan: "แผนทรัพยากร (Resource Plan)",
+  gtm_summary: "สรุปแผน Go-to-Market (GTM)",
+  executive_presentation: "สรุปสำหรับผู้บริหาร (Executive Presentation)",
+  project_proposal: "ข้อเสนอโครงการ (ฉบับสมบูรณ์)",
 };
 
 function getNarrativeKeys(docType: string): string[] {
