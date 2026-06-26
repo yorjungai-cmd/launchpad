@@ -12,7 +12,7 @@
  *   src/app/api/trpc/[trpc]/route.ts → createTRPCContext
  */
 
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server";
 import { getServerSession } from "@/lib/auth/server";
 import type { AppRole } from "@/lib/supabase/types";
 import type { User } from "@supabase/supabase-js";
@@ -50,12 +50,24 @@ export async function createTRPCContext(_opts: { headers: Headers }): Promise<Co
   const user = session?.user ?? null;
 
   // Role comes from user_metadata (synced from profiles table by a DB trigger).
-  // Fallback: query profiles table directly if metadata is stale or not yet set.
+  // Fallback: query profiles table via admin client (bypasses RLS) if metadata
+  // is stale or not yet set. Must NOT use the anon client here — RLS policies
+  // on profiles use a self-referencing sub-SELECT that causes infinite recursion
+  // when the role is not yet available in the session context.
   let role: AppRole | null = (user?.user_metadata?.["role"] as AppRole | undefined) ?? null;
 
   if (!role && user) {
-    const { data: profile } = await db.from("profiles").select("role").eq("id", user.id).single();
-    role = (profile?.role as AppRole | undefined) ?? null;
+    try {
+      const adminDb = createAdminSupabaseClient();
+      const { data: profile } = await adminDb
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+      role = (profile?.role as AppRole | undefined) ?? null;
+    } catch {
+      // Service role key not available (e.g., local dev without key) — role stays null
+    }
   }
 
   return {
