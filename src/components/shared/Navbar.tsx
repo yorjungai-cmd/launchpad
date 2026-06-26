@@ -41,8 +41,12 @@ export function Navbar({ className }: NavbarProps) {
       label: locale === "th" ? "ไอเดีย" : "Ideas",
     },
     {
-      href: `/${locale}/dashboard`,
+      href: `/${locale}/dashboard/executive`,
       label: locale === "th" ? "แดชบอร์ด" : "Dashboard",
+    },
+    {
+      href: `/${locale}/settings`,
+      label: locale === "th" ? "ตั้งค่า" : "Settings",
     },
   ];
 

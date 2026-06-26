@@ -71,7 +71,14 @@ const SET_ACTIVE_SENTINEL = "__setactive__";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Provider = "anthropic";
+type Provider = "anthropic" | "google" | "aws_bedrock" | "openrouter";
+
+const PROVIDER_CONFIG: Record<Provider, { label: string; placeholder: string; prefix: string }> = {
+  anthropic: { label: "Anthropic (Claude)", placeholder: "sk-ant-...", prefix: "sk-ant-" },
+  google: { label: "Google (Gemini)", placeholder: "AIza...", prefix: "AIza" },
+  aws_bedrock: { label: "AWS Bedrock", placeholder: "Access Key ID / ARN", prefix: "" },
+  openrouter: { label: "OpenRouter", placeholder: "sk-or-...", prefix: "sk-or-" },
+};
 
 interface ValidationResult {
   valid: boolean;
@@ -295,14 +302,25 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
             <Label htmlFor="key-provider">Provider</Label>
             <Select
               value={provider}
-              onValueChange={(v) => setProvider(v as Provider)}
+              onValueChange={(v) => {
+                setProvider(v as Provider);
+                // Reset validation when provider changes
+                if (validationResult !== null) {
+                  setValidationResult(null);
+                  setValidationPassed(false);
+                }
+              }}
               disabled={saveMutation.isPending}
             >
               <SelectTrigger id="key-provider">
                 <SelectValue placeholder="Select provider" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
+                {Object.entries(PROVIDER_CONFIG).map(([key, config]) => (
+                  <SelectItem key={key} value={key}>
+                    {config.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -314,7 +332,7 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
               <Input
                 id="key-value"
                 type={showKey ? "text" : "password"}
-                placeholder="sk-ant-..."
+                placeholder={PROVIDER_CONFIG[provider].placeholder}
                 value={keyValue}
                 onChange={handleKeyChange}
                 disabled={saveMutation.isPending}

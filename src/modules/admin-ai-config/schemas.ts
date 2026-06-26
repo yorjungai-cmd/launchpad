@@ -124,7 +124,7 @@ export type DeleteUserInput = z.infer<typeof DeleteUserSchema>;
  * ProviderSchema — currently only 'anthropic' is supported.
  * Extend this enum when additional providers are onboarded.
  */
-export const ProviderSchema = z.enum(["anthropic"]);
+export const ProviderSchema = z.enum(["anthropic", "google", "aws_bedrock", "openrouter"]);
 
 export type Provider = z.infer<typeof ProviderSchema>;
 
