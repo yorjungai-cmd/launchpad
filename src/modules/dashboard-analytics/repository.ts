@@ -46,15 +46,13 @@ export type ExportFilter = ExportReportInput;
 // The generated types.ts placeholder does not yet cover stage_transitions or
 // review_actions. These inline shapes mirror the actual DB schema in migrations.
 
-/** Supabase aggregate query result (count() returns a number via JS client) */
-interface StageAggRow {
+/** Raw idea row for stage/submitter counting */
+interface IdeaStageRow {
   current_stage: string;
-  count: number;
 }
 
-interface SubmitterAggRow {
+interface IdeaSubmitterRow {
   submitter_type: string;
-  count: number;
 }
 
 interface StageTransitionRow {
@@ -144,7 +142,7 @@ export class DashboardRepository {
 
       const { data, error } = await db
         .from("ideas")
-        .select("current_stage, count:id.count()")
+        .select("current_stage")
         .gte("created_at", filter.from)
         .lte("created_at", filter.to);
 
@@ -153,11 +151,17 @@ export class DashboardRepository {
         throw AppError.internal(`getIdeaCountByStage: ${error.message}`);
       }
 
-      const rows = (data as unknown as StageAggRow[]) ?? [];
+      const rows = (data as unknown as IdeaStageRow[]) ?? [];
 
-      return rows.map((row) => ({
-        stage: toIdeaStage(row.current_stage),
-        count: typeof row.count === "string" ? parseInt(row.count, 10) : row.count,
+      // Count in JS — Supabase anon key does not support aggregate functions
+      const countMap = new Map<string, number>();
+      for (const row of rows) {
+        countMap.set(row.current_stage, (countMap.get(row.current_stage) ?? 0) + 1);
+      }
+
+      return Array.from(countMap.entries()).map(([stage, count]) => ({
+        stage: toIdeaStage(stage),
+        count,
       }));
     } catch (err) {
       if (err instanceof AppError) throw err;
@@ -178,7 +182,7 @@ export class DashboardRepository {
 
       const { data, error } = await db
         .from("ideas")
-        .select("current_stage, count:id.count()")
+        .select("current_stage")
         .gte("created_at", filter.from)
         .lte("created_at", filter.to);
 
@@ -187,28 +191,26 @@ export class DashboardRepository {
         throw AppError.internal(`getWinNoGoStats: ${error.message}`);
       }
 
-      const rows = (data as unknown as StageAggRow[]) ?? [];
+      const rows = (data as unknown as IdeaStageRow[]) ?? [];
 
       let closedGo = 0;
       let closedNoGo = 0;
       let inProgress = 0;
 
       for (const row of rows) {
-        const count = typeof row.count === "string" ? parseInt(row.count, 10) : row.count;
         if (row.current_stage === IdeaStage.CLOSED_GO || row.current_stage === "closed_go") {
-          closedGo += count;
+          closedGo++;
         } else if (
           row.current_stage === IdeaStage.CLOSED_NO_GO ||
           row.current_stage === "closed_no_go"
         ) {
-          closedNoGo += count;
+          closedNoGo++;
         } else {
-          inProgress += count;
+          inProgress++;
         }
       }
 
       const totalClosed = closedGo + closedNoGo;
-      // Guard against division-by-zero per business rule (data-model.md §Business Rules)
       const winRate = totalClosed === 0 ? 0 : closedGo / totalClosed;
 
       return { totalClosed, closedGo, closedNoGo, inProgress, winRate };
@@ -427,7 +429,7 @@ export class DashboardRepository {
 
       const { data, error } = await db
         .from("ideas")
-        .select("submitter_type, count:id.count()")
+        .select("submitter_type")
         .gte("created_at", filter.from)
         .lte("created_at", filter.to);
 
@@ -436,11 +438,17 @@ export class DashboardRepository {
         throw AppError.internal(`getSourceBreakdown: ${error.message}`);
       }
 
-      const rows = (data as unknown as SubmitterAggRow[]) ?? [];
+      const rows = (data as unknown as IdeaSubmitterRow[]) ?? [];
 
-      return rows.map((row) => ({
-        submitterType: SUBMITTER_TYPE_MAP[row.submitter_type] ?? SubmitterType.EMPLOYEE,
-        count: typeof row.count === "string" ? parseInt(row.count, 10) : row.count,
+      // Count in JS
+      const countMap = new Map<string, number>();
+      for (const row of rows) {
+        countMap.set(row.submitter_type, (countMap.get(row.submitter_type) ?? 0) + 1);
+      }
+
+      return Array.from(countMap.entries()).map(([submitterType, count]) => ({
+        submitterType: SUBMITTER_TYPE_MAP[submitterType] ?? SubmitterType.EMPLOYEE,
+        count,
         percentage: 0, // computed by DashboardService
       }));
     } catch (err) {
