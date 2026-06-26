@@ -11,6 +11,7 @@ import * as fc from "fast-check";
 const mockFrom = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
   createServerSupabaseClient: vi.fn(() => ({ from: mockFrom })),
+  createAdminSupabaseClient: vi.fn(() => ({ from: mockFrom })),
 }));
 
 import { DocumentGenerationRepository } from "@/modules/document-generation/repository";

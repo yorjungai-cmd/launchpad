@@ -428,6 +428,82 @@ async function callClaudeWithRetry(
   throw lastError;
 }
 
+// ─── Document generation auto-trigger ─────────────────────────────────────────
+// Enqueue a document-generation job after a successful analysis. Mirrors the
+// pattern used by DocumentGenerationService.enqueueGeneration: dedup guard →
+// insert document_jobs row → pgmq_send to "document_generation_jobs".
+// All failures are logged but swallowed so the analysis flow always succeeds.
+async function enqueueDocumentGeneration(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  ideaId: string,
+  analysisId: string
+): Promise<void> {
+  const QUEUE_NAME = "document_generation_jobs";
+  try {
+    // Dedup guard: skip if an active job already exists for this idea
+    const { data: active } = await supabase
+      .from("document_jobs")
+      .select("id")
+      .eq("idea_id", ideaId)
+      .in("status", ["queued", "processing"])
+      .limit(1)
+      .maybeSingle();
+    if (active) {
+      console.info(
+        `[AIAnalysisWorker] document job already active for idea ${ideaId} — skip enqueue`
+      );
+      return;
+    }
+
+    // Create document_jobs row (status='queued')
+    const { data: job, error: jobError } = await supabase
+      .from("document_jobs")
+      .insert({
+        idea_id: ideaId,
+        analysis_id: analysisId,
+        status: "queued",
+        enqueued_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (jobError || !job) {
+      console.error(
+        `[AIAnalysisWorker] failed to create document_jobs row for idea ${ideaId}:`,
+        jobError?.message ?? "no row returned"
+      );
+      return;
+    }
+
+    const jobId = (job as { id: string }).id;
+
+    // Send message to the document generation queue
+    const { data: msgId, error: sendError } = await supabase.rpc("pgmq_send", {
+      queue_name: QUEUE_NAME,
+      msg: { ideaId, analysisId, jobId, timestamp: new Date().toISOString() },
+    });
+
+    if (sendError) {
+      console.error(
+        `[AIAnalysisWorker] pgmq_send (document) failed for idea ${ideaId}:`,
+        sendError.message
+      );
+      // Non-fatal: job row exists; a cron fallback can re-scan queued jobs
+      return;
+    }
+
+    if (msgId != null) {
+      await supabase.from("document_jobs").update({ queue_message_id: msgId }).eq("id", jobId);
+    }
+
+    console.info(`[AIAnalysisWorker] enqueued document generation job ${jobId} for idea ${ideaId}`);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[AIAnalysisWorker] enqueueDocumentGeneration error for idea ${ideaId}:`, errMsg);
+  }
+}
+
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
@@ -617,8 +693,9 @@ Deno.serve(async (req: Request) => {
   }
 
   // ── Step 8: Persist result ──────────────────────────────────────────────────
+  let completedAnalysisId: string | null = null;
   if (analysisResult) {
-    const { error: persistError } = await supabase
+    const { data: persistData, error: persistError } = await supabase
       .from("ai_analyses")
       .update({
         processing_status: "completed",
@@ -645,14 +722,26 @@ Deno.serve(async (req: Request) => {
         completed_at: new Date().toISOString(),
         attempt_count: attemptCount,
       })
-      .eq("idea_id", ideaId);
+      .eq("idea_id", ideaId)
+      .select("id")
+      .single();
 
     if (persistError) {
       console.error(
         `[AIAnalysisWorker] Failed to persist result for idea ${ideaId}:`,
         persistError.message
       );
+    } else {
+      completedAnalysisId = (persistData as { id: string } | null)?.id ?? null;
     }
+  }
+
+  // ── Step 8.5: Auto-trigger document generation ────────────────────────────
+  // After a successful analysis, enqueue a job so the document-generation-worker
+  // builds the full Launch PAD document set (feasibility report, BMC, proposal, …).
+  // Best-effort: never fail the analysis flow because of document enqueue.
+  if (analysisResult && completedAnalysisId) {
+    await enqueueDocumentGeneration(supabase, ideaId, completedAnalysisId);
   }
 
   // ── Step 9: pgmq_delete + update analysis_jobs status='done' ──────────────

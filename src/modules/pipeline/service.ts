@@ -65,6 +65,7 @@ export function toGuestTrackingDTO(
   aiResult: GuestTrackingDTO["aiResult"] = null
 ): GuestTrackingDTO {
   return {
+    ideaId: idea.id,
     referenceNumber: idea.referenceNumber,
     title: idea.title,
     currentStage: idea.currentStage,
@@ -164,7 +165,7 @@ export class PipelineService {
         currentStage: raw.currentStage,
         submittedAt: raw.submittedAt,
         updatedAt: raw.updatedAt,
-        id: "",
+        id: raw.ideaId,
         submitterType: "employee" as PipelineIdeaDTO["submitterType"],
         assignedReviewer: null,
         watermarkStatus: "ai_draft" as PipelineIdeaDTO["watermarkStatus"],

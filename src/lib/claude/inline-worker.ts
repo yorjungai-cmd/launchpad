@@ -36,7 +36,7 @@ interface IdeaForAnalysis {
   input_type: string;
 }
 
-interface ActiveKeyInfo {
+export interface ActiveKeyInfo {
   apiKey: string;
   provider: "anthropic" | "openrouter" | "google" | "aws_bedrock";
   model: string;
@@ -93,22 +93,15 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
       inputType: (row.input_type as "text" | "file" | "url") ?? "text",
     });
 
-    // 5. Call provider
-    let parsed: ClaudeAnalysisOutput;
-    switch (keyInfo.provider) {
-      case "anthropic":
-        parsed = await _callAnthropic(keyInfo, promptParams);
-        break;
-      case "openrouter":
-        parsed = await _callOpenRouter(keyInfo, promptParams);
-        break;
-      case "google":
-        parsed = await _callGoogle(keyInfo, promptParams);
-        break;
-      case "aws_bedrock":
-        parsed = await _callBedrock(keyInfo, promptParams);
-        break;
-    }
+    // 5. Call provider (generic tool-call → analysis tool)
+    const analysisRaw = await callProviderTool(keyInfo, {
+      system: promptParams.system,
+      messages: [...promptParams.messages],
+      tool: ANALYSIS_TOOL_DEFINITION,
+      toolName: ANALYSIS_TOOL_DEFINITION.name,
+      maxTokens: 4096,
+    });
+    const parsed: ClaudeAnalysisOutput = ClaudeAnalysisOutputSchema.parse(analysisRaw);
 
     // 6. Persist
     await aiAnalysisRepository.updateFromWorkerResult(ideaId, parsed);
@@ -213,6 +206,25 @@ function _defaultModel(provider: ActiveKeyInfo["provider"]): string {
   }
 }
 
+/**
+ * Public wrapper to resolve the active provider key/model from Admin Settings.
+ * Creates its own admin Supabase client. Returns null if no key is configured.
+ * Reused by inline document generation for narrative calls.
+ */
+export async function resolveActiveKeyInfo(): Promise<ActiveKeyInfo | null> {
+  const db = createAdminSupabaseClient();
+  return _resolveKeyInfo(db);
+}
+
+/**
+ * Returns a fast/cheap model for the given provider, used for narrative
+ * generation (lower latency keeps inline document generation within the
+ * serverless time budget).
+ */
+export function narrativeModelFor(provider: ActiveKeyInfo["provider"]): string {
+  return _defaultModel(provider);
+}
+
 async function _readVaultSecret(
   db: ReturnType<typeof createAdminSupabaseClient>,
   vaultId: string
@@ -231,55 +243,82 @@ async function _readVaultSecret(
   }
 }
 
-// ─── Provider callers ─────────────────────────────────────────────────────────
+// ─── Provider callers (generic tool-call) ─────────────────────────────────────
+// All providers expose one capability here: given (system, messages, tool),
+// force the model to call the tool and return the raw tool input object.
+// Each caller is provider-specific; callers of callProviderTool parse/validate
+// the returned object themselves (e.g. via Zod).
 
-type PromptParams = ReturnType<typeof buildAnalysisPrompt>;
+export interface ProviderToolSpec {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
 
-/** Parse tool use block from Anthropic-compatible response */
-function _parseAnthropicToolBlock(content: Anthropic.ContentBlock[]): ClaudeAnalysisOutput {
-  const toolBlock = content.find((b) => b.type === "tool_use");
-  if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("No tool_use block in response");
-  return ClaudeAnalysisOutputSchema.parse(toolBlock.input);
+export interface ProviderToolCall {
+  system: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  tool: ProviderToolSpec;
+  toolName: string;
+  maxTokens?: number;
+}
+
+/** Dispatch a forced tool-call to the configured provider. Returns the raw tool input. */
+export async function callProviderTool(
+  keyInfo: ActiveKeyInfo,
+  call: ProviderToolCall
+): Promise<unknown> {
+  switch (keyInfo.provider) {
+    case "anthropic":
+      return _callAnthropic(keyInfo, call);
+    case "openrouter":
+      return _callOpenRouter(keyInfo, call);
+    case "google":
+      return _callGoogle(keyInfo, call);
+    case "aws_bedrock":
+      return _callBedrock(keyInfo, call);
+  }
 }
 
 // ── Anthropic direct ──────────────────────────────────────────────────────────
 
-async function _callAnthropic(
-  keyInfo: ActiveKeyInfo,
-  prompt: PromptParams
-): Promise<ClaudeAnalysisOutput> {
+async function _callAnthropic(keyInfo: ActiveKeyInfo, call: ProviderToolCall): Promise<unknown> {
   const client = new Anthropic({ apiKey: keyInfo.apiKey });
   const resp = await client.messages.create({
     model: keyInfo.model,
-    max_tokens: 4096,
-    system: prompt.system,
-    messages: [...prompt.messages],
-    tools: [...prompt.tools] as Anthropic.Tool[],
-    tool_choice: prompt.tool_choice,
+    max_tokens: call.maxTokens ?? 4096,
+    system: call.system,
+    messages: call.messages,
+    tools: [
+      {
+        name: call.tool.name,
+        description: call.tool.description,
+        input_schema: call.tool.input_schema,
+      },
+    ] as Anthropic.Tool[],
+    tool_choice: { type: "tool", name: call.toolName },
   });
-  return _parseAnthropicToolBlock(resp.content);
+  const toolBlock = resp.content.find((b) => b.type === "tool_use");
+  if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("No tool_use block in response");
+  return toolBlock.input;
 }
 
 // ── OpenRouter (OpenAI-compatible chat completions + tool calling) ────────────
 
-async function _callOpenRouter(
-  keyInfo: ActiveKeyInfo,
-  prompt: PromptParams
-): Promise<ClaudeAnalysisOutput> {
+async function _callOpenRouter(keyInfo: ActiveKeyInfo, call: ProviderToolCall): Promise<unknown> {
   // OpenRouter uses OpenAI-compatible /chat/completions, NOT Anthropic /messages.
-  // Convert the Anthropic tool definition to OpenAI function-calling format.
   const tool = {
     type: "function" as const,
     function: {
-      name: ANALYSIS_TOOL_DEFINITION.name,
-      description: ANALYSIS_TOOL_DEFINITION.description,
-      parameters: ANALYSIS_TOOL_DEFINITION.input_schema,
+      name: call.tool.name,
+      description: call.tool.description,
+      parameters: call.tool.input_schema,
     },
   };
 
   const messages = [
-    { role: "system" as const, content: prompt.system },
-    ...prompt.messages.map((m) => ({ role: m.role, content: m.content })),
+    { role: "system" as const, content: call.system },
+    ...call.messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -292,10 +331,10 @@ async function _callOpenRouter(
     },
     body: JSON.stringify({
       model: _toOpenRouterModel(keyInfo.model),
-      max_tokens: 4096,
+      max_tokens: call.maxTokens ?? 4096,
       messages,
       tools: [tool],
-      tool_choice: { type: "function", function: { name: "analyze_idea" } },
+      tool_choice: { type: "function", function: { name: call.toolName } },
     }),
     signal: AbortSignal.timeout(55_000),
   });
@@ -311,8 +350,7 @@ async function _callOpenRouter(
   if (!toolCall?.function?.arguments) {
     throw new Error("OpenRouter response missing tool_calls");
   }
-  const args = JSON.parse(toolCall.function.arguments);
-  return ClaudeAnalysisOutputSchema.parse(args);
+  return JSON.parse(toolCall.function.arguments);
 }
 
 /** Normalise model id to OpenRouter format (uses dots: claude-haiku-4.5, with provider prefix) */
@@ -327,31 +365,27 @@ function _toOpenRouterModel(model: string): string {
 
 // ── Google Gemini (REST) ──────────────────────────────────────────────────────
 
-async function _callGoogle(
-  keyInfo: ActiveKeyInfo,
-  prompt: PromptParams
-): Promise<ClaudeAnalysisOutput> {
+async function _callGoogle(keyInfo: ActiveKeyInfo, call: ProviderToolCall): Promise<unknown> {
   const modelId = keyInfo.model.startsWith("models/") ? keyInfo.model : `models/${keyInfo.model}`;
   const url = `https://generativelanguage.googleapis.com/v1beta/${modelId}:generateContent?key=${keyInfo.apiKey}`;
 
-  // Convert Anthropic tool definition to Google function declaration
   const functionDeclaration = {
-    name: ANALYSIS_TOOL_DEFINITION.name,
-    description: ANALYSIS_TOOL_DEFINITION.description,
-    parameters: ANALYSIS_TOOL_DEFINITION.input_schema,
+    name: call.tool.name,
+    description: call.tool.description,
+    parameters: call.tool.input_schema,
   };
 
   const body = {
-    system_instruction: { parts: [{ text: prompt.system }] },
-    contents: prompt.messages.map((m) => ({
+    system_instruction: { parts: [{ text: call.system }] },
+    contents: call.messages.map((m) => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }],
     })),
     tools: [{ functionDeclarations: [functionDeclaration] }],
     tool_config: {
-      function_calling_config: { mode: "ANY", allowed_function_names: ["analyze_idea"] },
+      function_calling_config: { mode: "ANY", allowed_function_names: [call.toolName] },
     },
-    generation_config: { max_output_tokens: 4096 },
+    generation_config: { max_output_tokens: call.maxTokens ?? 4096 },
   };
 
   const resp = await fetch(url, {
@@ -372,17 +406,14 @@ async function _callGoogle(
   const fnCall = parts.find((p: { functionCall?: unknown }) => p.functionCall);
   if (!fnCall?.functionCall?.args) throw new Error("Google response missing functionCall.args");
 
-  return ClaudeAnalysisOutputSchema.parse(fnCall.functionCall.args);
+  return fnCall.functionCall.args;
 }
 
 // ── AWS Bedrock (via Anthropic SDK with AWS auth) ─────────────────────────────
 // Bedrock Claude models are accessible via Anthropic SDK using AWS credentials.
 // Key format: "ACCESS_KEY_ID|SECRET_ACCESS_KEY[|REGION]"
 
-async function _callBedrock(
-  keyInfo: ActiveKeyInfo,
-  prompt: PromptParams
-): Promise<ClaudeAnalysisOutput> {
+async function _callBedrock(keyInfo: ActiveKeyInfo, call: ProviderToolCall): Promise<unknown> {
   const parts = keyInfo.apiKey.split("|");
   if (parts.length < 2)
     throw new Error(
@@ -396,8 +427,8 @@ async function _callBedrock(
 
   // Build AWS SigV4 signed request using native crypto (available in Node.js 18+)
   const body = JSON.stringify({
-    system: [{ text: prompt.system }],
-    messages: prompt.messages.map((m) => ({
+    system: [{ text: call.system }],
+    messages: call.messages.map((m) => ({
       role: m.role,
       content: [{ text: m.content }],
     })),
@@ -405,15 +436,15 @@ async function _callBedrock(
       tools: [
         {
           toolSpec: {
-            name: ANALYSIS_TOOL_DEFINITION.name,
-            description: ANALYSIS_TOOL_DEFINITION.description,
-            inputSchema: { json: ANALYSIS_TOOL_DEFINITION.input_schema },
+            name: call.tool.name,
+            description: call.tool.description,
+            inputSchema: { json: call.tool.input_schema },
           },
         },
       ],
-      toolChoice: { tool: { name: "analyze_idea" } },
+      toolChoice: { tool: { name: call.toolName } },
     },
-    inferenceConfig: { maxTokens: 4096 },
+    inferenceConfig: { maxTokens: call.maxTokens ?? 4096 },
   });
 
   const headers = await _signBedrockRequest({
@@ -446,7 +477,7 @@ async function _callBedrock(
 
   if (!toolUse?.toolUse?.input) throw new Error("Bedrock response missing toolUse block");
 
-  return ClaudeAnalysisOutputSchema.parse(toolUse.toolUse.input);
+  return toolUse.toolUse.input;
 }
 
 /** AWS SigV4 signing using native Node.js crypto — no SDK required */

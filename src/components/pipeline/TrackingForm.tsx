@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { StageTimeline } from "./StageTimeline";
+import { DocumentGenerationSection } from "@/components/document-generation/document-generation-section";
 import { cn } from "@/lib/utils";
 
 // ─── Stage colours ────────────────────────────────────────────────────────────
@@ -192,6 +193,15 @@ export function TrackingForm({ referenceNumber, className }: TrackingFormProps) 
             )}
           </div>
         </div>
+      )}
+
+      {/* Generated Launch PAD documents (guest mode — authz by reference number) */}
+      {tracking.ideaId && (
+        <DocumentGenerationSection
+          ideaId={tracking.ideaId}
+          analysisCompleted={!!tracking.aiResult}
+          referenceNumber={tracking.referenceNumber}
+        />
       )}
     </article>
   );
