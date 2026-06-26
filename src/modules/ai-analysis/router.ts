@@ -139,6 +139,23 @@ export const analysisRouter = router({
       };
     }),
 
+  // ─── triggerAnalysis ─────────────────────────────────────────────────────────
+
+  /**
+   * BD Reviewer or Admin manually triggers inline AI analysis for an idea.
+   * Used when an idea was submitted before the inline worker was deployed,
+   * or when analysis failed and needs a retry.
+   */
+  triggerAnalysis: roleProcedure("bd_reviewer")
+    .input(z.object({ ideaId: z.string().uuid() }))
+    .output(z.object({ success: z.literal(true), message: z.string() }))
+    .mutation(async ({ input }) => {
+      const { runInlineAnalysis } = await import("@/lib/claude/inline-worker");
+      // fire-and-forget — response returns immediately
+      void runInlineAnalysis(input.ideaId);
+      return { success: true as const, message: "AI analysis started" };
+    }),
+
   // ─── listPending ────────────────────────────────────────────────────────────
 
   /**
