@@ -1,9 +1,9 @@
-name: CI / Deploy
+name: CI
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Triggers
-#   push to main   → run full CI + deploy to Production (via Vercel)
-#   pull_request   → run full CI + deploy Preview (via Vercel)
+#   push to main   → run quality gates (Vercel auto-deploys via GitHub Integration)
+#   pull_request   → run quality gates (Vercel auto-deploys Preview via GitHub Integration)
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
@@ -97,7 +97,6 @@ jobs:
       - name: Run unit + integration tests
         run: pnpm test
         env:
-          # Vitest uses jsdom — no real Supabase connection needed
           NODE_ENV: test
 
       - name: Upload coverage report
@@ -107,63 +106,3 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # Job 4: Deploy to Vercel
-  #   Uses Vercel CLI with --prebuilt for atomic deploys
-  # ───────────────────────────────────────────────────────────────────────────
-  deploy:
-    name: Deploy (${{ github.ref == 'refs/heads/main' && 'Production' || 'Preview' }})
-    runs-on: ubuntu-latest
-    needs: [typecheck, lint, test]
-
-    environment:
-      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
-      url: ${{ steps.deploy.outputs.url }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install Vercel CLI
-        run: pnpm add -g vercel@latest
-
-      - name: Deploy to Vercel
-        id: deploy
-        run: |
-          URL=$(vercel deploy ${{ github.ref == 'refs/heads/main' && '--prod' || '' }} \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --build-env NEXT_PUBLIC_SUPABASE_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" \
-            --build-env NEXT_PUBLIC_SUPABASE_ANON_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}" \
-            --build-env NEXT_PUBLIC_APP_URL="${{ secrets.NEXT_PUBLIC_APP_URL }}" \
-            --env SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            --env RESEND_API_KEY="${{ secrets.RESEND_API_KEY }}" \
-            --env RESEND_FROM_EMAIL="${{ secrets.RESEND_FROM_EMAIL }}" \
-            --yes)
-          echo "url=$URL" >> $GITHUB_OUTPUT
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
-      - name: Comment Preview URL on PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## 🚀 Preview Deployment\n\n✅ Deployed to: ${{ steps.deploy.outputs.url }}\n\nQuality gates: typecheck ✅ | lint ✅ | tests ✅`
-            })
