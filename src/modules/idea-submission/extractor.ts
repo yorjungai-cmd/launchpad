@@ -11,9 +11,18 @@
  * Task 2.2 + 2.3
  */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — pdf-parse ESM types lack a default export; CJS default works at runtime
-import pdfParse from "pdf-parse";
+// pdf-parse MUST be lazy-imported because pdfjs-dist crashes in Next.js RSC webpack context
+// when loaded at module initialization time (Object.defineProperty on non-object).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let pdfParseModule: any = null;
+async function getPdfParse() {
+  if (!pdfParseModule) {
+    const mod = await import("pdf-parse");
+    // pdf-parse exports vary between ESM/CJS — handle both
+    pdfParseModule = "default" in mod ? mod.default : mod;
+  }
+  return pdfParseModule;
+}
 import mammoth from "mammoth";
 import officeparser from "officeparser";
 import * as cheerio from "cheerio";
@@ -126,6 +135,7 @@ async function _doFileExtraction(
   let rawText: string;
 
   if (mimeType === MIME_PDF) {
+    const pdfParse = await getPdfParse();
     const parsed = await pdfParse(buffer);
     rawText = parsed.text;
   } else if (mimeType === MIME_DOCX) {
