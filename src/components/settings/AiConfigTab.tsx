@@ -78,10 +78,16 @@ const DEFAULT_MODELS_BY_PROVIDER: Record<string, Array<{ id: string; name: strin
     { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash (Fast)" },
   ],
   aws_bedrock: [
-    { id: "anthropic.claude-sonnet-4-5-20250514-v1:0", name: "Claude Sonnet 4.5 on Bedrock" },
-    { id: "anthropic.claude-haiku-4-5-20250514-v1:0", name: "Claude Haiku 4.5 on Bedrock" },
+    { id: "us.anthropic.claude-sonnet-4-6", name: "Claude Sonnet 4.6 on Bedrock (US, แนะนำ)" },
+    { id: "anthropic.claude-sonnet-4-6", name: "Claude Sonnet 4.6 on Bedrock (Direct)" },
+    {
+      id: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+      name: "Claude Sonnet 4.5 on Bedrock (US)",
+    },
+    { id: "us.anthropic.claude-haiku-4-5-20251014-v1:0", name: "Claude Haiku 4.5 on Bedrock (US)" },
     { id: "amazon.nova-pro-v1:0", name: "Amazon Nova Pro" },
     { id: "amazon.nova-lite-v1:0", name: "Amazon Nova Lite" },
+    { id: "amazon.nova-micro-v1:0", name: "Amazon Nova Micro" },
   ],
   openrouter: [],
 };

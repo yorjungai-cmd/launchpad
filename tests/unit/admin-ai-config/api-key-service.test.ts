@@ -152,13 +152,13 @@ describe("ApiKeyService", () => {
       expect(masked).toBe("sk-ant-...wxyz");
     });
 
-    it('keys NOT starting with "sk-" produce "sk-...{last4}" format', async () => {
+    it('keys NOT starting with "sk-" produce "***...{last4}" format', async () => {
       const { ApiKeyService } = await import("@/modules/admin-ai-config/api-key-service");
       const service = new ApiKeyService();
       const key = "OTHER_KEY_FORMAT_1234";
       const masked = (service as unknown as { _maskKey(k: string): string })._maskKey(key);
 
-      expect(masked).toBe("sk-...1234");
+      expect(masked).toBe("***...1234");
     });
   });
 

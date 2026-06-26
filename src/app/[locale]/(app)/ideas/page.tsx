@@ -123,10 +123,10 @@ function RunAIButton({
 
   const mutation = api.analysis.triggerAnalysis.useMutation({
     onSuccess: () => {
-      toast.success("AI analysis started — refresh in ~30s");
+      toast.success("AI analysis completed");
       onDone();
     },
-    onError: (err) => toast.error("Failed to start AI", { description: err.message }),
+    onError: (err) => toast.error("Failed to run AI", { description: err.message }),
   });
 
   if (!needsRun) return null;

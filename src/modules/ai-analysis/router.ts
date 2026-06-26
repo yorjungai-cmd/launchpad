@@ -143,17 +143,19 @@ export const analysisRouter = router({
 
   /**
    * BD Reviewer or Admin manually triggers inline AI analysis for an idea.
-   * Used when an idea was submitted before the inline worker was deployed,
-   * or when analysis failed and needs a retry.
+   * Runs SYNCHRONOUSLY (awaits completion) because Vercel serverless kills
+   * the execution context as soon as the response is sent — fire-and-forget
+   * background work never completes. The client shows a loading state while
+   * the Claude call runs (~10-30s, well within the function timeout).
    */
   triggerAnalysis: roleProcedure("bd_reviewer")
     .input(z.object({ ideaId: z.string().uuid() }))
-    .output(z.object({ success: z.literal(true), message: z.string() }))
+    .output(z.object({ success: z.boolean(), message: z.string() }))
     .mutation(async ({ input }) => {
       const { runInlineAnalysis } = await import("@/lib/claude/inline-worker");
-      // fire-and-forget — response returns immediately
-      void runInlineAnalysis(input.ideaId);
-      return { success: true as const, message: "AI analysis started" };
+      // Await — must complete before the serverless function returns
+      await runInlineAnalysis(input.ideaId);
+      return { success: true, message: "AI analysis completed" };
     }),
 
   // ─── listPending ────────────────────────────────────────────────────────────

@@ -10,7 +10,6 @@ import { AppError } from "@/lib/errors/AppError";
 import type { Context } from "@/server/context";
 import { ideaRepository } from "./repository";
 import { notificationService } from "@/modules/notification/service";
-import { runInlineAnalysis } from "@/lib/claude/inline-worker";
 import type { SubmitIdeaInput, TrackIdeaInput } from "./schemas";
 
 // ─── Result types ─────────────────────────────────────────────────────────────
@@ -85,11 +84,12 @@ export class IdeaSubmissionService {
       submitterType: input.submitterType,
     });
 
-    // Fire-and-forget AI analysis (inline worker — no Edge Function needed)
-    // Uses setImmediate so the HTTP response is sent first, then analysis runs
-    void (async () => {
-      await runInlineAnalysis(idea.id);
-    })();
+    // Fire-and-forget AI analysis does NOT work on Vercel serverless — the
+    // function is killed once the response is sent. Instead, the analysis is
+    // triggered explicitly via the "Run AI" button on the /ideas page, OR
+    // could be run by a cron/queue worker. We intentionally do NOT await here
+    // to keep submission fast; the idea is created with analysis_status=pending
+    // and BD/Admin can trigger analysis from the Ideas page.
 
     return {
       ideaId: idea.id,

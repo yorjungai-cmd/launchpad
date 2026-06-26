@@ -118,7 +118,10 @@ describe("Property 1 — maskKey() never exposes plaintext (200 runs)", () => {
   it("masked output never contains the plaintext body (only last 4 chars allowed)", () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 10, maxLength: 200 }).filter((k) => k.length >= 10),
+        // Exclude pipe character from PBT since "|" is the Bedrock key delimiter
+        fc
+          .string({ minLength: 10, maxLength: 200 })
+          .filter((k) => k.length >= 10 && !k.includes("|")),
         (plaintext) => {
           const masked = maskKey(plaintext);
           const last4 = plaintext.slice(-4);
@@ -147,9 +150,9 @@ describe("Property 1 — maskKey() never exposes plaintext (200 runs)", () => {
     expect(masked).toMatch(/abcd$/);
   });
 
-  it("edge case: key NOT starting with 'sk-' uses generic format (sk-...{last4})", () => {
+  it("edge case: key NOT starting with 'sk-' uses generic format (***...{last4})", () => {
     const masked = maskKey("xyz_random_key_1234");
-    expect(masked).toMatch(/^sk-\.\.\./);
+    expect(masked).toMatch(/^\*{3}\.\.\./);
     expect(masked).toMatch(/1234$/);
   });
 

@@ -265,6 +265,10 @@ export type Database = {
         Args: { id: string };
         Returns: void;
       };
+      vault_read_secret: {
+        Args: { secret_id: string };
+        Returns: string;
+      };
     };
     Enums: {
       app_role: AppRole;

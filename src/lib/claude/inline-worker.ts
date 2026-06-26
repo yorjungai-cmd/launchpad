@@ -218,13 +218,15 @@ async function _readVaultSecret(
   vaultId: string
 ): Promise<string | null> {
   try {
-    const { data } = await db
-      .from("vault.decrypted_secrets" as "api_keys")
-      .select("decrypted_secret")
-      .eq("id", vaultId)
-      .single();
-    return (data as unknown as { decrypted_secret: string } | null)?.decrypted_secret ?? null;
-  } catch {
+    // Use public RPC — PostgREST cannot access vault schema directly via .from()
+    const { data, error } = await db.rpc("vault_read_secret", { secret_id: vaultId });
+    if (error) {
+      logger.error({ err: error.message, vaultId }, "_readVaultSecret: RPC failed");
+      return null;
+    }
+    return (data as string | null) ?? null;
+  } catch (err) {
+    logger.error({ err: String(err), vaultId }, "_readVaultSecret: exception");
     return null;
   }
 }

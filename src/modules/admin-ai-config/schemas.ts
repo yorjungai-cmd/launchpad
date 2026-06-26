@@ -22,14 +22,30 @@ import { UserRole } from "@/shared/enums";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /**
- * Allowlist of supported Claude model identifiers.
+ * Allowlist of supported AI model identifiers across all providers.
  * Extending this list requires updating ModelNameSchema automatically
  * (ModelNameSchema is derived from this const).
+ *
+ * Bedrock model IDs follow the inference profile format:
+ *   - Cross-region: us.anthropic.claude-sonnet-4-6
+ *   - Direct:       anthropic.claude-sonnet-4-6
  */
 export const SUPPORTED_MODELS = [
+  // Anthropic (direct API)
   "claude-opus-4-5",
   "claude-sonnet-4-5",
   "claude-haiku-4-5",
+  // AWS Bedrock — Claude (inference profile IDs)
+  "us.anthropic.claude-sonnet-4-6",
+  "anthropic.claude-sonnet-4-6",
+  "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "us.anthropic.claude-haiku-4-5-20251014-v1:0",
+  "anthropic.claude-sonnet-4-5-20250929-v1:0",
+  "anthropic.claude-haiku-4-5-20251014-v1:0",
+  // AWS Bedrock — Amazon Nova
+  "amazon.nova-pro-v1:0",
+  "amazon.nova-lite-v1:0",
+  "amazon.nova-micro-v1:0",
 ] as const;
 
 export type SupportedModel = (typeof SUPPORTED_MODELS)[number];

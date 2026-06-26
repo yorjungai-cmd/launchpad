@@ -73,10 +73,18 @@ const SET_ACTIVE_SENTINEL = "__setactive__";
 
 type Provider = "anthropic" | "google" | "aws_bedrock" | "openrouter";
 
-const PROVIDER_CONFIG: Record<Provider, { label: string; placeholder: string; prefix: string }> = {
+const PROVIDER_CONFIG: Record<
+  Provider,
+  { label: string; placeholder: string; prefix: string; hint?: string }
+> = {
   anthropic: { label: "Anthropic (Claude)", placeholder: "sk-ant-...", prefix: "sk-ant-" },
   google: { label: "Google (Gemini)", placeholder: "AIza...", prefix: "AIza" },
-  aws_bedrock: { label: "AWS Bedrock", placeholder: "Access Key ID / ARN", prefix: "" },
+  aws_bedrock: {
+    label: "AWS Bedrock",
+    placeholder: "AKIAIOSFODNN7EXAMPLE|wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    prefix: "",
+    hint: 'Format: "ACCESS_KEY_ID|SECRET_ACCESS_KEY" หรือ "ACCESS_KEY_ID|SECRET_ACCESS_KEY|REGION" (คั่นด้วย | )',
+  },
   openrouter: { label: "OpenRouter", placeholder: "sk-or-...", prefix: "sk-or-" },
 };
 
@@ -358,7 +366,13 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
                 disabled={saveMutation.isPending}
                 autoComplete="new-password"
                 className="pr-10"
-                aria-describedby={validationResult ? "key-validation-result" : undefined}
+                aria-describedby={
+                  validationResult
+                    ? "key-validation-result"
+                    : PROVIDER_CONFIG[provider].hint
+                      ? "key-format-hint"
+                      : undefined
+                }
               />
               <button
                 type="button"
@@ -374,6 +388,13 @@ function AddKeyDialog({ open, onClose, onSuccess }: AddKeyDialogProps) {
                 )}
               </button>
             </div>
+
+            {/* Provider-specific format hint */}
+            {PROVIDER_CONFIG[provider].hint && (
+              <p id="key-format-hint" className="text-xs text-muted-foreground">
+                {PROVIDER_CONFIG[provider].hint}
+              </p>
+            )}
 
             {/* Test button */}
             <Button
