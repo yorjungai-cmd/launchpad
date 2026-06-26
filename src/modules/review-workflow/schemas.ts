@@ -7,7 +7,7 @@ import { z } from "zod";
 
 export const ReviewQueueFilterSchema = z.object({
   cursor: z.string().uuid().optional(),
-  limit: z.number().int().min(1).max(50).default(20),
+  limit: z.number().int().min(1).max(200).default(20),
   stage: z.string().optional(),
   watermarkStatus: z.string().optional(),
   submitterType: z.string().optional(),

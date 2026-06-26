@@ -230,7 +230,7 @@ export class ReviewWorkflowRepository {
   ): Promise<{ items: QueueItem[]; nextCursor: string | null; total: number }> {
     // Use admin client to bypass RLS — RBAC is enforced at tRPC layer (roleProcedure)
     const db = createAdminSupabaseClient() as any;
-    const limit = Math.min(filter.limit ?? 20, 50);
+    const limit = Math.min(filter.limit ?? 20, 200);
 
     // Build base query: all ideas (left join to ai_analyses so ideas without analysis appear too)
     // No stage filter — enum only has sandbox/validation_sprint/build_sprint/launch_and_test
