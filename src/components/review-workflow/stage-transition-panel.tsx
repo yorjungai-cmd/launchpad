@@ -55,7 +55,7 @@ export function StageTransitionPanel({
   const { data: historyData } = api.review.listTransitions.useQuery({ ideaId });
 
   const validNextStages = VALID_STAGES.filter(
-    (s) => s !== currentStage && currentStage !== "Closed"
+    (s) => s !== currentStage && currentStage !== "closed_go" && currentStage !== "closed_no_go"
   );
 
   return (
@@ -69,7 +69,7 @@ export function StageTransitionPanel({
       </div>
 
       {/* Stage change controls */}
-      {currentStage !== "Closed" && (
+      {currentStage !== "closed_go" && currentStage !== "closed_no_go" && (
         <div className="flex items-center gap-2">
           <Select value={selectedStage} onValueChange={setSelectedStage}>
             <SelectTrigger className="w-52" aria-label="Select new stage">

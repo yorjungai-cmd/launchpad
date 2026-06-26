@@ -179,7 +179,7 @@ export class ReviewWorkflowRepository {
         rejection_reason: reason,
         rejected_at: new Date().toISOString(),
         rejected_by: reviewerId,
-        current_stage: "Closed",
+        current_stage: "closed_no_go",
       })
       .eq("id", ideaId);
     if (error) throw new Error(`ReviewWorkflowRepository.updateIdeaRejection: ${error.message}`);
@@ -231,19 +231,14 @@ export class ReviewWorkflowRepository {
     const db = this.getClient();
     const limit = Math.min(filter.limit ?? 20, 50);
 
-    // Build base query: all ideas not closed (with optional left-join to ai_analyses)
-    // Use left join (no !inner) so ideas without ai_analyses also appear in the queue
-    let query = db
-      .from("ideas")
-      .select(
-        `
+    // Build base query: all ideas (left join to ai_analyses so ideas without analysis appear too)
+    // No stage filter — enum only has sandbox/validation_sprint/build_sprint/launch_and_test
+    let query = db.from("ideas").select(
+      `
         id, title, current_stage, submitter_name, submitter_type, created_at, updated_at,
         ai_analyses(processing_status, recommended_action)
       `
-      )
-      .neq("current_stage", "Closed")
-      .neq("current_stage", "closed_go")
-      .neq("current_stage", "closed_no_go");
+    );
 
     // Apply filters
     if (filter.stage) query = query.eq("current_stage", filter.stage);

@@ -52,11 +52,12 @@ async function getIdeaSubmitterInfo(ideaId: string): Promise<IdeaSubmitterInfo |
 // ─── Stage machine ────────────────────────────────────────────────────────────
 
 export const VALID_STAGES = [
-  "Sandbox",
-  "Validation Sprint",
-  "Build Sprint",
-  "Launch & Test",
-  "Closed",
+  "sandbox",
+  "validation_sprint",
+  "build_sprint",
+  "launch_and_test",
+  "closed_go",
+  "closed_no_go",
 ] as const;
 
 export type IdeaStage = (typeof VALID_STAGES)[number];
@@ -72,7 +73,7 @@ export function validateStageTransition(
   if (!VALID_STAGES.includes(toStage as IdeaStage)) {
     return { valid: false, error: `Unknown stage: ${toStage}` };
   }
-  if (fromStage === "Closed") {
+  if (fromStage === "closed_go" || fromStage === "closed_no_go") {
     return { valid: false, error: "Cannot transition from Closed stage (terminal state)" };
   }
   if (fromStage === toStage) {
@@ -330,7 +331,7 @@ export class ReviewWorkflowService {
 
     const idea = await reviewWorkflowRepository.findIdea(params.ideaId);
     if (!idea) throw AppError.notFound(`Idea ${params.ideaId} not found`);
-    if (idea.currentStage === "Closed") {
+    if (idea.currentStage === "closed_go" || idea.currentStage === "closed_no_go") {
       throw AppError.validation("Idea is already closed");
     }
 
@@ -344,11 +345,11 @@ export class ReviewWorkflowService {
       params.reviewerId
     );
 
-    // Insert stage_transition to Closed
+    // Insert stage_transition to closed_no_go
     await reviewWorkflowRepository.insertStageTransition({
       ideaId: params.ideaId,
       fromStage,
-      toStage: "Closed",
+      toStage: "closed_no_go",
       reviewerId: params.reviewerId,
       reviewerName: params.reviewerName,
       reason: params.reason,
