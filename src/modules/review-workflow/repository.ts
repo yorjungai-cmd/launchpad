@@ -231,17 +231,19 @@ export class ReviewWorkflowRepository {
     const db = this.getClient();
     const limit = Math.min(filter.limit ?? 20, 50);
 
-    // Build base query: ideas with completed analysis, not closed
+    // Build base query: all ideas not closed (with optional left-join to ai_analyses)
+    // Use left join (no !inner) so ideas without ai_analyses also appear in the queue
     let query = db
       .from("ideas")
       .select(
         `
         id, title, current_stage, submitter_name, submitter_type, created_at, updated_at,
-        ai_analyses!inner(processing_status, recommended_action)
+        ai_analyses(processing_status, recommended_action)
       `
       )
       .neq("current_stage", "Closed")
-      .eq("ai_analyses.processing_status", "completed");
+      .neq("current_stage", "closed_go")
+      .neq("current_stage", "closed_no_go");
 
     // Apply filters
     if (filter.stage) query = query.eq("current_stage", filter.stage);
@@ -257,19 +259,23 @@ export class ReviewWorkflowRepository {
 
     const rows = (data ?? []) as any[];
     const hasMore = rows.length > limit;
-    const items = (hasMore ? rows.slice(0, limit) : rows).map((row: any) => ({
-      ideaId: row.id as string,
-      title: (row.title ?? "") as string,
-      currentStage: (row.current_stage ?? "Sandbox") as string,
-      submitterName: (row.submitter_name ?? "") as string,
-      submitterType: (row.submitter_type ?? "") as string,
-      submittedAt: row.created_at as string,
-      updatedAt: row.updated_at as string,
-      watermarkStatus: "ai_draft" as string, // simplified — full impl joins output_documents
-      recommendedAction: (row.ai_analyses as any)?.recommended_action ?? null,
-      lastActionAt: null,
-      lastActionType: null,
-    }));
+    const items = (hasMore ? rows.slice(0, limit) : rows).map((row: any) => {
+      // ai_analyses may be array (left join) or null
+      const analysis = Array.isArray(row.ai_analyses) ? row.ai_analyses[0] : row.ai_analyses;
+      return {
+        ideaId: row.id as string,
+        title: (row.title ?? "") as string,
+        currentStage: (row.current_stage ?? "sandbox") as string,
+        submitterName: (row.submitter_name ?? "") as string,
+        submitterType: (row.submitter_type ?? "") as string,
+        submittedAt: row.created_at as string,
+        updatedAt: row.updated_at as string,
+        watermarkStatus: "ai_draft" as string,
+        recommendedAction: analysis?.recommended_action ?? null,
+        lastActionAt: null,
+        lastActionType: null,
+      };
+    });
 
     return {
       items,
