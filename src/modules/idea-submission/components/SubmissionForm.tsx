@@ -111,7 +111,6 @@ export function SubmissionForm() {
     }
   }, [watch, fetchUrlMutation]);
 
-  const isGuest = !user;
   const isLoading = isSubmitting || submitMutation.isPending;
 
   // ─── Tab content ─────────────────────────────────────────────────────────
@@ -228,20 +227,18 @@ export function SubmissionForm() {
         />
       </GuidedField>
 
-      {/* Submitter Email — required for guests, read-only for authenticated */}
+      {/* Submitter Email — always editable, pre-filled from session if logged in */}
       <GuidedField
         htmlFor="submitterEmail"
         label={t("fields.submitterEmail")}
         required
-        tooltip={isGuest ? t("tooltips.submitterEmailGuest") : t("tooltips.submitterEmailInternal")}
+        tooltip={t("tooltips.submitterEmailGuest")}
         error={errors.submitterEmail?.message}
       >
         <Input
           id="submitterEmail"
           type="email"
           placeholder={t("placeholders.submitterEmail")}
-          readOnly={!isGuest}
-          disabled={!isGuest}
           {...register("submitterEmail")}
           className={cn(errors.submitterEmail && "border-destructive")}
         />
