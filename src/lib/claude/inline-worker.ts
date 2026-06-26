@@ -16,11 +16,8 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-  type Tool as BedrockTool,
-} from "@aws-sdk/client-bedrock-runtime";
+// AWS SDK is lazily imported inside _callBedrock() to prevent webpack from
+// trying to statically bundle it — it's only needed at runtime when provider=aws_bedrock
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { buildAnalysisPrompt } from "./prompt-builder";
 import { ClaudeAnalysisOutputSchema } from "@/modules/ai-analysis/schemas";
@@ -342,6 +339,10 @@ async function _callBedrock(
   keyInfo: ActiveKeyInfo,
   prompt: PromptParams
 ): Promise<ClaudeAnalysisOutput> {
+  // Lazy import — prevents webpack from statically bundling AWS SDK
+  // which is not installed in all environments
+  const { BedrockRuntimeClient, ConverseCommand } = await import("@aws-sdk/client-bedrock-runtime");
+
   // Parse AWS credentials from key format: "ACCESS_KEY_ID|SECRET_ACCESS_KEY[|REGION]"
   const parts = keyInfo.apiKey.split("|");
   if (parts.length < 2)
@@ -360,7 +361,7 @@ async function _callBedrock(
   });
 
   // Build Bedrock tool definition
-  const bedrockTool: BedrockTool = {
+  const bedrockTool = {
     toolSpec: {
       name: ANALYSIS_TOOL_DEFINITION.name,
       description: ANALYSIS_TOOL_DEFINITION.description,
@@ -385,7 +386,6 @@ async function _callBedrock(
 
   const resp = await client.send(command);
 
-  // Find tool use block in response
   const content = resp.output?.message?.content ?? [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const toolUse = content.find((b: any) => b.toolUse !== undefined) as

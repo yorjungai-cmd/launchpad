@@ -26,7 +26,8 @@
 
 import logger from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
-import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedrock";
+// @aws-sdk/client-bedrock is lazily imported inside _validateBedrockKey and _listBedrockModels
+// to prevent webpack from statically bundling it (causes build failure if not installed)
 import { adminAuditLogService } from "./audit-log-service";
 import type { ApiKeyMasked, SaveApiKeyInput, Provider } from "./schemas";
 
@@ -525,6 +526,8 @@ export class ApiKeyService {
     }
 
     try {
+      const { BedrockClient, ListFoundationModelsCommand } =
+        await import("@aws-sdk/client-bedrock");
       const client = new BedrockClient({
         region,
         credentials: { accessKeyId, secretAccessKey },
@@ -620,6 +623,8 @@ export class ApiKeyService {
     if (!accessKeyId || !secretAccessKey) return this._bedrockFallbackModels();
 
     try {
+      const { BedrockClient, ListFoundationModelsCommand } =
+        await import("@aws-sdk/client-bedrock");
       const client = new BedrockClient({
         region,
         credentials: { accessKeyId, secretAccessKey },
