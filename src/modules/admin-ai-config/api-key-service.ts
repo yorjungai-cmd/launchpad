@@ -26,6 +26,7 @@
 
 import logger from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
+import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedrock";
 import { adminAuditLogService } from "./audit-log-service";
 import type { ApiKeyMasked, SaveApiKeyInput, Provider } from "./schemas";
 
@@ -363,15 +364,7 @@ export class ApiKeyService {
         case "google":
           return this._listGoogleModels(key);
         case "aws_bedrock":
-          return [
-            {
-              id: "anthropic.claude-sonnet-4-5-20250514-v1:0",
-              name: "Claude Sonnet 4.5 (Bedrock)",
-            },
-            { id: "anthropic.claude-haiku-4-5-20250514-v1:0", name: "Claude Haiku 4.5 (Bedrock)" },
-            { id: "amazon.nova-pro-v1:0", name: "Amazon Nova Pro" },
-            { id: "amazon.nova-lite-v1:0", name: "Amazon Nova Lite" },
-          ];
+          return this._listBedrockModels(key);
         case "openrouter":
           return this._listOpenRouterModels(key);
         default:
@@ -386,8 +379,15 @@ export class ApiKeyService {
 
   /**
    * _maskKey — derive a display-safe string from a plaintext key.
+   * For AWS Bedrock: key is "ACCESS_KEY_ID|SECRET_ACCESS_KEY" joined with pipe.
    */
   private _maskKey(plaintext: string): string {
+    // Bedrock: stored as "AKID|secret" — mask to show only access key prefix + last 4
+    if (plaintext.includes("|")) {
+      const accessKeyId = plaintext.split("|")[0] ?? "";
+      const last4 = accessKeyId.slice(-4);
+      return `${accessKeyId.slice(0, 4)}...${last4}`;
+    }
     const last4 = plaintext.slice(-4);
     if (plaintext.startsWith("sk-ant-")) return `sk-ant-...${last4}`;
     if (plaintext.startsWith("AIza")) return `AIza...${last4}`;
@@ -488,24 +488,77 @@ export class ApiKeyService {
   }
 
   /**
-   * _validateBedrockKey — validate AWS Bedrock access.
-   * Note: Full Bedrock validation requires AWS SigV4 signing. For simplicity,
-   * we accept any key that looks like a valid AWS access key format.
+   * _validateBedrockKey — validate AWS Bedrock credentials by calling
+   * bedrock:ListFoundationModels with a 10 s timeout.
+   *
+   * Key format expected: "ACCESS_KEY_ID|SECRET_ACCESS_KEY[|REGION]"
+   * (pipe-separated — stored in Vault, never logged).
+   *
+   * HTTP 200 → valid credentials
+   * AuthFailure / InvalidClientTokenId → invalid key
    */
   private async _validateBedrockKey(key: string): Promise<ValidationResult> {
     const start = Date.now();
-    // AWS access keys: 20 chars, starts with AKIA/ASIA, or could be an ARN
-    const isValidFormat = /^(AKIA|ASIA)[A-Z0-9]{16}$/.test(key) || key.startsWith("arn:aws:");
-    const latencyMs = Date.now() - start;
 
-    if (isValidFormat) {
-      return { valid: true, latencyMs };
+    // Parse pipe-separated format: "AKID|secret[|region]"
+    const parts = key.split("|");
+    const accessKeyId = parts[0]?.trim();
+    const secretAccessKey = parts[1]?.trim();
+    const region = parts[2]?.trim() ?? "us-east-1";
+
+    if (!accessKeyId || !secretAccessKey) {
+      return {
+        valid: false,
+        error:
+          'Invalid format. Expected "ACCESS_KEY_ID|SECRET_ACCESS_KEY" or "ACCESS_KEY_ID|SECRET_ACCESS_KEY|REGION".',
+        latencyMs: Date.now() - start,
+      };
     }
-    return {
-      valid: false,
-      error: "Invalid format. Expected AWS Access Key ID (AKIA...) or ARN.",
-      latencyMs,
-    };
+
+    // Quick format check on access key ID
+    if (!/^(AKIA|ASIA|AROA)[A-Z0-9]{16}$/.test(accessKeyId)) {
+      return {
+        valid: false,
+        error: "Invalid AWS Access Key ID format (expected AKIA… or ASIA… + 16 chars).",
+        latencyMs: Date.now() - start,
+      };
+    }
+
+    try {
+      const client = new BedrockClient({
+        region,
+        credentials: { accessKeyId, secretAccessKey },
+        requestHandler: { requestTimeout: 10_000 },
+      });
+
+      await client.send(new ListFoundationModelsCommand({ byOutputModality: "TEXT" }));
+      return { valid: true, latencyMs: Date.now() - start };
+    } catch (err: unknown) {
+      const latencyMs = Date.now() - start;
+      const errName = err instanceof Error ? err.name : "unknown";
+      const errMsg = err instanceof Error ? err.message : String(err);
+
+      if (
+        errName === "UnrecognizedClientException" ||
+        errName === "InvalidClientTokenId" ||
+        errName === "AuthFailure" ||
+        errMsg.includes("security token") ||
+        errMsg.includes("credentials")
+      ) {
+        return {
+          valid: false,
+          error: "AWS credentials invalid or Bedrock access not enabled.",
+          latencyMs,
+        };
+      }
+
+      if (errName === "TimeoutError" || errMsg.includes("timeout")) {
+        return { valid: false, error: "Validation timeout — check region and network.", latencyMs };
+      }
+
+      logger.error({ errName, latencyMs }, "ApiKeyService._validateBedrockKey: unexpected error");
+      return { valid: false, error: `Bedrock validation error: ${errName}`, latencyMs };
+    }
   }
 
   /**
@@ -549,6 +602,77 @@ export class ApiKeyService {
     return (data.models ?? [])
       .filter((m) => m.name.includes("gemini"))
       .map((m) => ({ id: m.name.replace("models/", ""), name: m.displayName }));
+  }
+
+  /**
+   * _listBedrockModels — list available text foundation models + inference profiles
+   * from AWS Bedrock using the provided credentials (pipe-separated format).
+   *
+   * Prioritises inference profiles (cross-region routing) over single-region models.
+   * Filters to TEXT output modality only to exclude image/embedding models.
+   */
+  private async _listBedrockModels(key: string): Promise<Array<{ id: string; name: string }>> {
+    const parts = key.split("|");
+    const accessKeyId = parts[0]?.trim();
+    const secretAccessKey = parts[1]?.trim();
+    const region = parts[2]?.trim() ?? "us-east-1";
+
+    if (!accessKeyId || !secretAccessKey) return this._bedrockFallbackModels();
+
+    try {
+      const client = new BedrockClient({
+        region,
+        credentials: { accessKeyId, secretAccessKey },
+        requestHandler: { requestTimeout: 10_000 },
+      });
+
+      const { modelSummaries } = await client.send(
+        new ListFoundationModelsCommand({ byOutputModality: "TEXT" })
+      );
+
+      if (!modelSummaries?.length) return this._bedrockFallbackModels();
+
+      // Prefer ACTIVE models only that support ON_DEMAND inference
+      const active = modelSummaries.filter(
+        (m) =>
+          m.modelLifecycle?.status === "ACTIVE" &&
+          (m.inferenceTypesSupported?.includes("ON_DEMAND") ?? true)
+      );
+
+      const results = active.map((m) => ({
+        id: `us.${m.modelId ?? ""}`, // cross-region inference profile prefix
+        name: `${m.modelName ?? m.modelId} (Bedrock)`,
+      }));
+
+      // Also include direct model IDs as alternatives
+      const direct = active.slice(0, 10).map((m) => ({
+        id: m.modelId ?? "",
+        name: `${m.modelName ?? m.modelId} (Bedrock Direct)`,
+      }));
+
+      return [...results, ...direct].filter((m) => m.id);
+    } catch {
+      return this._bedrockFallbackModels();
+    }
+  }
+
+  /**
+   * _bedrockFallbackModels — hardcoded fallback when live query fails.
+   * Includes Claude Sonnet 4.6 (the recommended model for this project).
+   */
+  private _bedrockFallbackModels(): Array<{ id: string; name: string }> {
+    return [
+      { id: "us.anthropic.claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Bedrock US)" },
+      { id: "anthropic.claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Bedrock Direct)" },
+      {
+        id: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        name: "Claude Sonnet 4.5 (Bedrock US)",
+      },
+      { id: "us.anthropic.claude-haiku-4-5-20251014-v1:0", name: "Claude Haiku 4.5 (Bedrock US)" },
+      { id: "amazon.nova-pro-v1:0", name: "Amazon Nova Pro" },
+      { id: "amazon.nova-lite-v1:0", name: "Amazon Nova Lite" },
+      { id: "amazon.nova-micro-v1:0", name: "Amazon Nova Micro" },
+    ];
   }
 
   /**

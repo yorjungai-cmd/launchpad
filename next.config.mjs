@@ -7,15 +7,22 @@ const withNextIntl = createNextIntlPlugin(
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Prevent bundling problematic native/binary/ESM-only packages in serverless functions
-  serverExternalPackages: [
-    "pdf-parse",
-    "pdfjs-dist",
-    "officeparser",
-    "mammoth",
-    "pino",
-    "pino-pretty",
-  ],
+  // Next.js 14 uses experimental.serverComponentsExternalPackages
+  // (renamed to serverExternalPackages in Next.js 15)
+  experimental: {
+    serverComponentsExternalPackages: [
+      "pdf-parse",
+      "pdfjs-dist",
+      "officeparser",
+      "mammoth",
+      "pino",
+      "pino-pretty",
+      "@aws-sdk/client-bedrock-runtime",
+      "@aws-sdk/client-bedrock",
+      "@aws-sdk/client-sts",
+      "@smithy/node-http-handler",
+    ],
+  },
 };
 
 export default withNextIntl(nextConfig);
