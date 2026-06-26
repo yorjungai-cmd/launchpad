@@ -31,7 +31,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Settings, KeyRound, Users, Bot } from "lucide-react";
+import { Settings, Bot, KeyRound, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -48,25 +48,27 @@ const AiConfigTab = dynamic(
   }
 );
 
-// Placeholder components for tabs not yet implemented in this phase.
-// They will be replaced by ApiKeysTab and UsersTab in future tasks.
-function ApiKeysTabPlaceholder() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
-      <KeyRound className="size-10 opacity-40" aria-hidden="true" />
-      <p className="text-sm">API Keys management — coming soon</p>
-    </div>
-  );
-}
+const ApiKeysTab = dynamic(
+  () =>
+    import("@/components/settings/ApiKeysTab").then((m) => ({
+      default: m.ApiKeysTab,
+    })),
+  {
+    loading: () => <TabContentSkeleton />,
+    ssr: false,
+  }
+);
 
-function UsersTabPlaceholder() {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-20 text-muted-foreground">
-      <Users className="size-10 opacity-40" aria-hidden="true" />
-      <p className="text-sm">User management — coming soon</p>
-    </div>
-  );
-}
+const UsersTab = dynamic(
+  () =>
+    import("@/components/settings/UsersTab").then((m) => ({
+      default: m.UsersTab,
+    })),
+  {
+    loading: () => <TabContentSkeleton />,
+    ssr: false,
+  }
+);
 
 // Skeleton used as the Suspense/dynamic loading fallback for AiConfigTab
 function AiConfigTabSkeleton() {
@@ -80,6 +82,22 @@ function AiConfigTabSkeleton() {
         </div>
       ))}
       <div className="h-10 w-24 rounded bg-muted" />
+    </div>
+  );
+}
+
+// Generic tab loading skeleton
+function TabContentSkeleton() {
+  return (
+    <div className="animate-pulse space-y-4" aria-busy="true" aria-label="กำลังโหลด...">
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <div className="h-5 w-32 rounded bg-muted" />
+          <div className="h-3 w-64 rounded bg-muted" />
+        </div>
+        <div className="h-9 w-24 rounded bg-muted" />
+      </div>
+      <div className="h-48 w-full rounded-lg bg-muted" />
     </div>
   );
 }
@@ -113,9 +131,9 @@ function TabContent({ activeTab }: { activeTab: TabId }) {
     case "ai-config":
       return <AiConfigTab />;
     case "api-keys":
-      return <ApiKeysTabPlaceholder />;
+      return <ApiKeysTab />;
     case "users":
-      return <UsersTabPlaceholder />;
+      return <UsersTab />;
     default:
       return null;
   }
