@@ -144,6 +144,11 @@ async function _doFileExtraction(
   const buffer = Buffer.from(arrayBuffer);
 
   // 2. Parse by MIME type
+  // Also check storagePath extension as a fallback — some browsers report
+  // generic MIME types (text/plain, application/octet-stream) for .html files
+  const pathExt = storagePath.split(".").pop()?.toLowerCase() ?? "";
+  const isHtmlByExtension = pathExt === "html" || pathExt === "htm" || pathExt === "xhtml";
+
   let rawText: string;
 
   if (mimeType === MIME_PDF) {
@@ -153,7 +158,7 @@ async function _doFileExtraction(
     rawText = result.value;
   } else if (mimeType === MIME_PPTX) {
     rawText = await _parseWithOfficeParser(buffer);
-  } else if (mimeType === MIME_HTML || mimeType === MIME_XHTML) {
+  } else if (mimeType === MIME_HTML || mimeType === MIME_XHTML || isHtmlByExtension) {
     rawText = await _extractHtml(buffer);
   } else {
     // Fallback: try officeparser for anything else

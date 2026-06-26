@@ -45,16 +45,28 @@ type UploadState =
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ALLOWED_MIME_TYPES = [
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation", // pptx
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
-  "application/msword", // doc
-  "text/html", // html
-  "application/xhtml+xml", // xhtml
-] as const;
+const ALLOWED_EXTENSIONS = [".pdf", ".pptx", ".docx", ".doc", ".html", ".htm", ".xhtml"];
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
+
+/** Resolve the effective MIME type — use file extension when browser reports generic type */
+function resolveMimeType(file: File): string {
+  const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
+  const EXT_TO_MIME: Record<string, string> = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".doc": "application/msword",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".xhtml": "application/xhtml+xml",
+  };
+  // If browser gives a specific known MIME, use it; otherwise derive from extension
+  if (file.type && file.type !== "application/octet-stream" && file.type !== "text/plain") {
+    return file.type;
+  }
+  return EXT_TO_MIME[ext] ?? file.type;
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -70,7 +82,8 @@ export function FileUploadHandler({ onExtracted, onError }: FileUploadHandlerPro
 
   const validateFile = useCallback(
     (file: File): string | null => {
-      if (!ALLOWED_MIME_TYPES.includes(file.type as (typeof ALLOWED_MIME_TYPES)[number])) {
+      const ext = "." + (file.name.split(".").pop()?.toLowerCase() ?? "");
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
         return t("errorInvalidType");
       }
       if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -100,10 +113,14 @@ export function FileUploadHandler({ onExtracted, onError }: FileUploadHandlerPro
         const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const storagePath = `idea-files/uploads/${timestamp}-${safeFileName}`;
 
+        // Resolve effective MIME (extension-based fallback for browsers that
+        // report generic types like "application/octet-stream" for .html files)
+        const effectiveMime = resolveMimeType(file);
+
         const { error: uploadError } = await supabase.storage
           .from("idea-files")
           .upload(`uploads/${timestamp}-${safeFileName}`, file, {
-            contentType: file.type,
+            contentType: effectiveMime,
             upsert: false,
           });
 
@@ -111,12 +128,12 @@ export function FileUploadHandler({ onExtracted, onError }: FileUploadHandlerPro
           throw new Error(uploadError.message);
         }
 
-        // Extract content
+        // Extract content — pass the resolved MIME so server uses the right parser
         setState({ stage: "extracting" });
 
         const extracted = await extractFileMutation.mutateAsync({
           storagePath,
-          mimeType: file.type,
+          mimeType: effectiveMime,
         });
 
         setState({
@@ -136,7 +153,7 @@ export function FileUploadHandler({ onExtracted, onError }: FileUploadHandlerPro
         });
       }
     },
-    [validateFile, onExtracted, extractFileMutation, state]
+    [validateFile, onExtracted, onError, extractFileMutation, state]
   );
 
   // ─── Event handlers ───────────────────────────────────────────────────────
