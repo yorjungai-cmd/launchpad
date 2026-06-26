@@ -79,7 +79,11 @@ export async function middleware(request: NextRequest) {
   // 3. Build a Supabase client that can read + refresh session cookies
   //    in the middleware context (no `cookies()` from next/headers here —
   //    we use the raw request/response cookie API instead).
-  let supabaseResponse = intlResponse ?? NextResponse.next({ request });
+  //
+  //    IMPORTANT: supabaseResponse must be the SAME object passed to setAll.
+  //    Creating a new NextResponse.next() inside setAll loses intlResponse headers
+  //    (locale redirects, x-intl-locale etc.) and breaks session cookie propagation.
+  const supabaseResponse = intlResponse ?? NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env["NEXT_PUBLIC_SUPABASE_URL"]!,
@@ -90,12 +94,12 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Write updated auth cookies to the outgoing response
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          supabaseResponse = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          );
+          // Write cookies into BOTH request and the existing supabaseResponse
+          // so the client receives refreshed tokens without losing intl headers.
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value);
+            supabaseResponse.cookies.set(name, value, options);
+          });
         },
       },
     }

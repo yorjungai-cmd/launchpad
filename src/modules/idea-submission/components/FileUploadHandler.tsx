@@ -50,6 +50,8 @@ const ALLOWED_MIME_TYPES = [
   "application/vnd.openxmlformats-officedocument.presentationml.presentation", // pptx
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // docx
   "application/msword", // doc
+  "text/html", // html
+  "application/xhtml+xml", // xhtml
 ] as const;
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB
@@ -276,7 +278,7 @@ export function FileUploadHandler({ onExtracted, onError }: FileUploadHandlerPro
       <input
         ref={fileInputRef}
         type="file"
-        accept=".pdf,.pptx,.docx,.doc"
+        accept=".pdf,.pptx,.docx,.doc,.html,.htm,.xhtml"
         className="sr-only"
         aria-hidden="true"
         tabIndex={-1}

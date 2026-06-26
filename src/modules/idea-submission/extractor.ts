@@ -61,6 +61,8 @@ const URL_TIMEOUT_MS = 10_000;
 const MIME_PDF = "application/pdf";
 const MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MIME_PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+const MIME_HTML = "text/html";
+const MIME_XHTML = "application/xhtml+xml";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -145,14 +147,14 @@ async function _doFileExtraction(
   let rawText: string;
 
   if (mimeType === MIME_PDF) {
-    const pdfParse = await getPdfParse();
-    const parsed = await pdfParse(buffer);
-    rawText = parsed.text;
+    rawText = await _extractPdf(buffer);
   } else if (mimeType === MIME_DOCX) {
     const result = await mammoth.extractRawText({ buffer });
     rawText = result.value;
   } else if (mimeType === MIME_PPTX) {
     rawText = await _parseWithOfficeParser(buffer);
+  } else if (mimeType === MIME_HTML || mimeType === MIME_XHTML) {
+    rawText = await _extractHtml(buffer);
   } else {
     // Fallback: try officeparser for anything else
     rawText = await _parseWithOfficeParser(buffer);
@@ -175,6 +177,64 @@ async function _parseWithOfficeParser(buffer: Buffer): Promise<string> {
   // officeparser.parseOffice accepts file path, Buffer, or config object
   const text = await officeparser.parseOffice(buffer);
   return typeof text === "string" ? text : String(text);
+}
+
+/**
+ * _extractPdf — extract text from PDF buffer.
+ *
+ * Primary: pdf-parse (fast, text-layer based).
+ * Fallback: raw text extraction via cheerio if pdf-parse returns empty
+ *           (some PDFs have no text layer — e.g. scanned images).
+ * If both return empty, throws so the caller shows the fallback textarea.
+ */
+async function _extractPdf(buffer: Buffer): Promise<string> {
+  try {
+    const pdfParse = await getPdfParse();
+    const parsed = await pdfParse(buffer);
+    const text = (parsed.text ?? "").trim();
+    if (text.length > 0) return text;
+    // Empty text layer — try raw buffer decode as a best-effort
+    // (won't work for image-only PDFs but worth trying)
+    const rawStr = buffer.toString("latin1");
+    // Extract readable ASCII strings from PDF stream
+    const matches = rawStr.match(/[\x20-\x7E\u0E00-\u0E7F]{4,}/g) ?? [];
+    const fallback = matches.join(" ").trim();
+    if (fallback.length > 20) return fallback;
+    throw new Error("PDF has no extractable text layer (may be a scanned image)");
+  } catch (err) {
+    // Re-throw with clearer message
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`PDF extraction failed: ${msg}`);
+  }
+}
+
+/**
+ * _extractHtml — extract readable text from HTML buffer.
+ *
+ * Uses cheerio to strip scripts/styles then returns clean text.
+ * Reuses existing cheerio dependency — no new packages needed.
+ */
+async function _extractHtml(buffer: Buffer): Promise<string> {
+  const html = buffer.toString("utf-8");
+  const $ = cheerio.load(html);
+
+  // Remove non-content elements
+  $("script, style, noscript, iframe, nav, footer, header").remove();
+
+  // Get text from body (or whole document if no body)
+  const bodyText = $("body").text() || $.root().text();
+
+  // Normalize whitespace
+  const cleaned = bodyText
+    .replace(/\s+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (cleaned.length === 0) {
+    throw new Error("No readable text found in HTML file");
+  }
+
+  return cleaned;
 }
 
 // ─── extractFromUrl ───────────────────────────────────────────────────────────
