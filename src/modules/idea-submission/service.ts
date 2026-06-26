@@ -10,6 +10,7 @@ import { AppError } from "@/lib/errors/AppError";
 import type { Context } from "@/server/context";
 import { ideaRepository } from "./repository";
 import { notificationService } from "@/modules/notification/service";
+import { runInlineAnalysis } from "@/lib/claude/inline-worker";
 import type { SubmitIdeaInput, TrackIdeaInput } from "./schemas";
 
 // ─── Result types ─────────────────────────────────────────────────────────────
@@ -83,6 +84,12 @@ export class IdeaSubmissionService {
       submitterName: input.submitterName,
       submitterType: input.submitterType,
     });
+
+    // Fire-and-forget AI analysis (inline worker — no Edge Function needed)
+    // Uses setImmediate so the HTTP response is sent first, then analysis runs
+    void (async () => {
+      await runInlineAnalysis(idea.id);
+    })();
 
     return {
       ideaId: idea.id,
