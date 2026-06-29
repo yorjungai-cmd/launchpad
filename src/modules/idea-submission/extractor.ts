@@ -19,6 +19,13 @@
 let pdfParseModule: any = null;
 async function getPdfParse() {
   if (!pdfParseModule) {
+    // pdf-parse/lib/pdf-parse.js loads pdfjs via a template-literal require:
+    //   require(`./pdf.js/${options.version}/build/pdf.js`)
+    // @vercel/nft cannot statically trace template literals, so the pdfjs bundle
+    // would be missing from the Vercel deployment. This static require gives
+    // @vercel/nft a traceable path so the file is copied into the function bundle.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js");
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore — no types for the inner subpath; pdfParseModule is already typed as any
     const mod = await import("pdf-parse/lib/pdf-parse.js");
