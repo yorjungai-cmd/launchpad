@@ -11,14 +11,17 @@
  * Task 2.2 + 2.3
  */
 
-// pdf-parse MUST be lazy-imported because pdfjs-dist crashes in Next.js RSC webpack context
-// when loaded at module initialization time (Object.defineProperty on non-object).
+// pdf-parse@1.1.1 index.js runs a self-test on import that reads
+// ./test/data/05-versions-space.pdf — this file does not exist in Vercel's
+// production bundle, causing an ENOENT crash.  Import the inner lib directly
+// to skip the self-test entirely.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pdfParseModule: any = null;
 async function getPdfParse() {
   if (!pdfParseModule) {
-    const mod = await import("pdf-parse");
-    // pdf-parse exports vary between ESM/CJS — handle both
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore — no types for the inner subpath; pdfParseModule is already typed as any
+    const mod = await import("pdf-parse/lib/pdf-parse.js");
     pdfParseModule = "default" in mod ? mod.default : mod;
   }
   return pdfParseModule;

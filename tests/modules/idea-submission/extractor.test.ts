@@ -28,9 +28,9 @@ import type * as cheerioModule from "cheerio";
 
 // ─── Module mocks ─────────────────────────────────────────────────────────────
 
-// Mock pdf-parse
+// Mock pdf-parse — use the inner lib path to match the production import
 const mockPdfParse = vi.fn();
-vi.mock("pdf-parse", () => ({ default: mockPdfParse }));
+vi.mock("pdf-parse/lib/pdf-parse.js", () => ({ default: mockPdfParse }));
 
 // Mock mammoth
 const mockMammothExtractRawText = vi.fn();
