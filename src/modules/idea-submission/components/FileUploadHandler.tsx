@@ -41,7 +41,7 @@ type UploadState =
   | { stage: "uploading" }
   | { stage: "extracting" }
   | { stage: "preview"; text: string; storagePath: string; originalName: string }
-  | { stage: "fallback"; storagePath: string; originalName: string };
+  | { stage: "fallback"; storagePath: string; originalName: string; lastError?: string };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -143,13 +143,15 @@ export function FileUploadHandler({ onExtracted, onError }: FileUploadHandlerPro
           originalName: file.name,
         });
         onExtracted(extracted.extractedText, storagePath, file.name);
-      } catch {
-        // Extraction failure — show fallback textarea
-        const uploadedPath = state.stage === "uploading" ? "" : "";
+      } catch (err) {
+        // Log the actual error so it appears in the browser console and Vercel logs
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[FileUploadHandler] stage=", state.stage, "error=", msg, err);
         setState({
           stage: "fallback",
-          storagePath: uploadedPath,
+          storagePath: "",
           originalName: file.name,
+          lastError: msg,
         });
       }
     },
@@ -236,9 +238,14 @@ export function FileUploadHandler({ onExtracted, onError }: FileUploadHandlerPro
   if (state.stage === "fallback") {
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          <AlertCircle className="size-4 shrink-0" />
-          <span>{t("extractionFailed")}</span>
+        <div className="flex flex-col gap-1 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4 shrink-0" />
+            <span>{t("extractionFailed")}</span>
+          </div>
+          {state.lastError && (
+            <p className="pl-6 font-mono text-xs opacity-70">{state.lastError}</p>
+          )}
         </div>
         <Textarea
           rows={8}

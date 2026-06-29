@@ -22,6 +22,14 @@ const nextConfig = {
       "@aws-sdk/client-sts",
       "@smithy/node-http-handler",
     ],
+    // pdf-parse/lib/pdf-parse.js loads pdfjs via a template-literal require:
+    //   require(`./pdf.js/${version}/build/pdf.js`)
+    // @vercel/nft cannot statically trace template literals, so Vercel omits
+    // the pdfjs bundle from the deployment.  Explicitly include the whole
+    // lib/ tree so the require succeeds at runtime.
+    outputFileTracingIncludes: {
+      "/api/trpc/[trpc]": ["./node_modules/pdf-parse/lib/**"],
+    },
   },
 };
 
