@@ -152,6 +152,12 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
 
 const PDF_VISION_MAX_BYTES = 4 * 1024 * 1024; // 4 MB — within provider doc size limits
 
+// Canonical upload path: uploads/<timestamp>-<safeFileName>.pdf
+// Hard-coded bucket prevents a tampered file_url from reaching other buckets via the
+// service-role admin client (which bypasses RLS).
+const IDEA_FILES_BUCKET = "idea-files";
+const ALLOWED_FILE_PATH_RE = /^uploads\/[^/]+\.pdf$/i;
+
 /**
  * Download a PDF from Supabase Storage and return it as a base64 string.
  * Returns undefined if the file exceeds the size limit or download fails.
@@ -162,11 +168,20 @@ async function _downloadPdfAsBase64(
   filename?: string
 ): Promise<ProviderToolCall["pdfAttachment"]> {
   try {
-    const firstSlash = fileUrl.indexOf("/");
-    const bucket = firstSlash !== -1 ? fileUrl.slice(0, firstSlash) : "idea-files";
-    const filePath = firstSlash !== -1 ? fileUrl.slice(firstSlash + 1) : fileUrl;
+    // Strip the well-known bucket prefix and validate — bucket is always hard-coded.
+    // fileUrl is stored server-side during upload (format: "idea-files/uploads/<name>")
+    // but we never trust it to choose the bucket: parse only the path within the bucket.
+    const bucketPrefix = `${IDEA_FILES_BUCKET}/`;
+    const filePath = fileUrl.startsWith(bucketPrefix)
+      ? fileUrl.slice(bucketPrefix.length)
+      : fileUrl;
 
-    const { data, error } = await db.storage.from(bucket).download(filePath);
+    if (!ALLOWED_FILE_PATH_RE.test(filePath)) {
+      logger.warn({ fileUrl }, "_downloadPdfAsBase64: unexpected path format, skipping");
+      return undefined;
+    }
+
+    const { data, error } = await db.storage.from(IDEA_FILES_BUCKET).download(filePath);
     if (error || !data) return undefined;
 
     const arrayBuffer = await data.arrayBuffer();
