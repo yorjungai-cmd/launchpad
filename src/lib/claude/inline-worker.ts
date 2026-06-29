@@ -34,6 +34,8 @@ interface IdeaForAnalysis {
   raw_content: string | null;
   extracted_text: string | null;
   input_type: string;
+  file_url: string | null;
+  file_original_name: string | null;
 }
 
 export interface ActiveKeyInfo {
@@ -75,7 +77,7 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
     // 2. Fetch idea
     const { data: idea, error: ideaErr } = await db
       .from("ideas")
-      .select("id, title, raw_content, extracted_text, input_type")
+      .select("id, title, raw_content, extracted_text, input_type, file_url, file_original_name")
       .eq("id", ideaId)
       .single();
     if (ideaErr || !idea) throw new Error(`Idea not found: ${ideaErr?.message ?? "no row"}`);
@@ -93,6 +95,22 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
       inputType: (row.input_type as "text" | "file" | "url") ?? "text",
     });
 
+    // 4b. For PDF file submissions: download the file and attach as a vision document
+    //     so the AI can see images, charts, and diagrams — not just extracted text.
+    //     Claude (Anthropic) + Gemini (Google) support native PDF vision.
+    //     Limit: 4 MB to stay within provider document size limits.
+    let pdfAttachment: ProviderToolCall["pdfAttachment"];
+    if (row.input_type === "file" && row.file_url) {
+      const ext = row.file_url.split(".").pop()?.toLowerCase();
+      if (ext === "pdf" && (keyInfo.provider === "anthropic" || keyInfo.provider === "google")) {
+        pdfAttachment = await _downloadPdfAsBase64(
+          db,
+          row.file_url,
+          row.file_original_name ?? undefined
+        );
+      }
+    }
+
     // 5. Call provider (generic tool-call → analysis tool)
     const analysisRaw = await callProviderTool(keyInfo, {
       system: promptParams.system,
@@ -100,6 +118,7 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
       tool: ANALYSIS_TOOL_DEFINITION,
       toolName: ANALYSIS_TOOL_DEFINITION.name,
       maxTokens: 4096,
+      pdfAttachment,
     });
     const parsed: ClaudeAnalysisOutput = ClaudeAnalysisOutputSchema.parse(analysisRaw);
 
@@ -126,6 +145,47 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
     } catch {
       /* best-effort */
     }
+  }
+}
+
+// ─── PDF vision helper ────────────────────────────────────────────────────────
+
+const PDF_VISION_MAX_BYTES = 4 * 1024 * 1024; // 4 MB — within provider doc size limits
+
+/**
+ * Download a PDF from Supabase Storage and return it as a base64 string.
+ * Returns undefined if the file exceeds the size limit or download fails.
+ */
+async function _downloadPdfAsBase64(
+  db: ReturnType<typeof createAdminSupabaseClient>,
+  fileUrl: string,
+  filename?: string
+): Promise<ProviderToolCall["pdfAttachment"]> {
+  try {
+    const firstSlash = fileUrl.indexOf("/");
+    const bucket = firstSlash !== -1 ? fileUrl.slice(0, firstSlash) : "idea-files";
+    const filePath = firstSlash !== -1 ? fileUrl.slice(firstSlash + 1) : fileUrl;
+
+    const { data, error } = await db.storage.from(bucket).download(filePath);
+    if (error || !data) return undefined;
+
+    const arrayBuffer = await data.arrayBuffer();
+    if (arrayBuffer.byteLength > PDF_VISION_MAX_BYTES) {
+      logger.warn(
+        { fileUrl, size: arrayBuffer.byteLength },
+        "_downloadPdfAsBase64: PDF too large for vision, skipping"
+      );
+      return undefined;
+    }
+
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    return { base64, filename };
+  } catch (err) {
+    logger.warn(
+      { fileUrl, err: String(err) },
+      "_downloadPdfAsBase64: failed, continuing without vision"
+    );
+    return undefined;
   }
 }
 
@@ -261,6 +321,8 @@ export interface ProviderToolCall {
   tool: ProviderToolSpec;
   toolName: string;
   maxTokens?: number;
+  /** PDF file to attach as a vision document block (Anthropic + Google only) */
+  pdfAttachment?: { base64: string; filename?: string };
 }
 
 /** Dispatch a forced tool-call to the configured provider. Returns the raw tool input. */
@@ -284,22 +346,75 @@ export async function callProviderTool(
 
 async function _callAnthropic(keyInfo: ActiveKeyInfo, call: ProviderToolCall): Promise<unknown> {
   const client = new Anthropic({ apiKey: keyInfo.apiKey });
-  const resp = await client.messages.create({
-    model: keyInfo.model,
-    max_tokens: call.maxTokens ?? 4096,
-    system: call.system,
-    messages: call.messages,
-    tools: [
-      {
-        name: call.tool.name,
-        description: call.tool.description,
-        input_schema: call.tool.input_schema,
-      },
-    ] as Anthropic.Tool[],
-    tool_choice: { type: "tool", name: call.toolName },
-  });
-  const toolBlock = resp.content.find((b) => b.type === "tool_use");
+
+  const toolDef = {
+    name: call.tool.name,
+    description: call.tool.description,
+    input_schema: call.tool.input_schema,
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let content: any[];
+
+  if (call.pdfAttachment) {
+    // Use the beta PDF path — build BetaMessageParam[] so types align
+    const betaMessages: Anthropic.Beta.Messages.BetaMessageParam[] = call.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    for (let i = betaMessages.length - 1; i >= 0; i--) {
+      if (betaMessages[i]!.role === "user") {
+        const prevText = betaMessages[i]!.content as string;
+        betaMessages[i] = {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: {
+                type: "base64",
+                media_type: "application/pdf",
+                data: call.pdfAttachment.base64,
+              },
+              ...(call.pdfAttachment.filename ? { title: call.pdfAttachment.filename } : {}),
+            } as Anthropic.Beta.Messages.BetaBase64PDFBlock,
+            { type: "text", text: prevText },
+          ],
+        };
+        break;
+      }
+    }
+
+    const betaResp = await client.beta.messages.create({
+      model: keyInfo.model,
+      max_tokens: call.maxTokens ?? 4096,
+      system: call.system,
+      messages: betaMessages,
+      tools: [toolDef] as Anthropic.Beta.Messages.BetaTool[],
+      tool_choice: { type: "tool", name: call.toolName },
+      betas: ["pdfs-2024-09-25"],
+    });
+    content = betaResp.content;
+  } else {
+    const messages: Anthropic.MessageParam[] = call.messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+    const resp = await client.messages.create({
+      model: keyInfo.model,
+      max_tokens: call.maxTokens ?? 4096,
+      system: call.system,
+      messages,
+      tools: [toolDef] as Anthropic.Tool[],
+      tool_choice: { type: "tool", name: call.toolName },
+    });
+    content = resp.content;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-assignment
+  const toolBlock = content.find((b: { type: string }) => b.type === "tool_use");
   if (!toolBlock || toolBlock.type !== "tool_use") throw new Error("No tool_use block in response");
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-member-access
   return toolBlock.input;
 }
 
@@ -375,12 +490,26 @@ async function _callGoogle(keyInfo: ActiveKeyInfo, call: ProviderToolCall): Prom
     parameters: call.tool.input_schema,
   };
 
+  // Find the index of the last user message so we can attach the PDF there
+  const lastUserIdx =
+    [...call.messages]
+      .map((m, i) => ({ m, i }))
+      .filter(({ m }) => m.role === "user")
+      .pop()?.i ?? -1;
+
   const body = {
     system_instruction: { parts: [{ text: call.system }] },
-    contents: call.messages.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    })),
+    contents: call.messages.map((m, idx) => {
+      const baseparts = [{ text: m.content }];
+      const parts =
+        call.pdfAttachment && idx === lastUserIdx
+          ? [
+              { inlineData: { mimeType: "application/pdf", data: call.pdfAttachment.base64 } },
+              ...baseparts,
+            ]
+          : baseparts;
+      return { role: m.role === "assistant" ? "model" : "user", parts };
+    }),
     tools: [{ functionDeclarations: [functionDeclaration] }],
     tool_config: {
       function_calling_config: { mode: "ANY", allowed_function_names: [call.toolName] },
