@@ -118,22 +118,28 @@ export class DocumentGenerationService {
 
     const results: OutputDocument[] = [];
 
-    for (const docType of documentTypes) {
-      if (docType === "project_proposal") continue; // handled separately
+    // Step 1: prepare all non-proposal docs synchronously (compose sections, collect narrative keys)
+    const preparedDocs = documentTypes
+      .filter((docType) => docType !== "project_proposal")
+      .map((docType) => {
+        const template = getTemplate(docType) as DocumentTemplate | undefined;
+        if (!template) {
+          logger.warn({ docType }, "DocumentGenerationService: no template found — skipping");
+          return null;
+        }
+        const sections = composeSections(template, templateData);
+        const narrativeKeys = sections.filter((s) => s.needsNarrative).map((s) => s.key);
+        return { docType, template, sections, narrativeKeys };
+      })
+      .filter((d): d is NonNullable<typeof d> => d !== null);
 
-      const template = getTemplate(docType) as DocumentTemplate | undefined;
-      if (!template) {
-        logger.warn({ docType }, "DocumentGenerationService: no template found — skipping");
-        continue;
-      }
-
-      const sections = composeSections(template, templateData);
-      const narrativeKeys = sections.filter((s) => s.needsNarrative).map((s) => s.key);
-
-      let filledSections = sections;
-      if (narrativeKeys.length > 0) {
+    // Step 2: fire all Claude narrative calls in parallel — avoids sequential latency stacking
+    // that exceeds Vercel's 60s serverless function limit on Sandbox (5 doc types × ~12s = ~60s)
+    const narrativesArr = await Promise.all(
+      preparedDocs.map(async ({ docType, narrativeKeys }) => {
+        if (narrativeKeys.length === 0) return {} as Record<string, string>;
         try {
-          const narratives = await callClaude({
+          return await callClaude({
             ideaTitle: templateData.ideaTitle,
             summary: templateData.summary,
             stage: templateData.stage,
@@ -150,16 +156,22 @@ export class DocumentGenerationService {
             documentType: docType,
             sectionKeys: narrativeKeys,
           });
-          filledSections = fillNarrativeSections(sections, narratives);
         } catch (err) {
           logger.warn(
             { docType, err },
             "DocumentGenerationService: Claude narrative failed — using placeholder fallback"
           );
-          // fallback: narrative slots remain empty (template fallback per design)
+          return {} as Record<string, string>;
         }
-      }
+      })
+    );
 
+    // Step 3: assemble and upsert each document sequentially (fast: Supabase writes only)
+    for (let i = 0; i < preparedDocs.length; i++) {
+      const { docType, template, sections } = preparedDocs[i]!;
+      const narratives = narrativesArr[i] ?? {};
+      const filledSections =
+        Object.keys(narratives).length > 0 ? fillNarrativeSections(sections, narratives) : sections;
       const contentMarkdown = assembleMarkdown(filledSections);
       const params: UpsertDocumentParams = {
         ideaId,
@@ -171,7 +183,6 @@ export class DocumentGenerationService {
         watermarkStatus: WatermarkStatus.AI_DRAFT,
         generationStatus: "completed",
       };
-
       const doc = await documentGenerationRepository.upsertDocument(params);
       results.push(doc);
     }
