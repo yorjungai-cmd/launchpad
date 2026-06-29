@@ -255,6 +255,40 @@ describe("extractFromUrl()", () => {
     );
   }
 
+  /**
+   * Conditional mock: returns different responses for Jina vs direct fetches.
+   * jinaContent=null simulates Jina failing (HTTP 429).
+   */
+  function mockFetchConditional(directHtml: string, jinaContent: string | null): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((fetchUrl: string) => {
+        if (String(fetchUrl).startsWith("https://r.jina.ai/")) {
+          if (jinaContent === null) {
+            return Promise.resolve({
+              ok: false,
+              status: 429,
+              statusText: "Too Many Requests",
+              text: async () => "",
+            });
+          }
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            text: async () => jinaContent,
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          text: async () => directHtml,
+        });
+      })
+    );
+  }
+
   it("extracts main content text from a valid URL", async () => {
     mockFetchSuccess();
 
@@ -308,13 +342,48 @@ describe("extractFromUrl()", () => {
     expect(result.error).toContain("Unsupported protocol");
   });
 
-  it("returns { status: 'failed' } when HTML has no readable content", async () => {
-    // A page with only scripts and no readable article content
-    mockFetchSuccess("<html><head><script>var x=1;</script></head><body></body></html>");
+  it("returns { status: 'failed' } when HTML has no readable content and Jina also fails", async () => {
+    mockFetchConditional(
+      "<html><head><script>var x=1;</script></head><body></body></html>",
+      null // Jina fails
+    );
 
     const result = await extractFromUrl("https://example.com/empty");
 
     expect(result.status).toBe("failed");
+  });
+
+  it("falls back to Jina AI Reader for JS-rendered SPA pages", async () => {
+    const spaHtml = `<html><head></head><body><div id="root"></div></body></html>`;
+    const jinaMarkdown = `# CiVil Pro MAX\n\nแพลตฟอร์มคำนวณทางวิศวกรรมสำหรับวิศวกรโยธาและสถาปนิก\n\n## ฟีเจอร์\n- คำนวณโครงสร้าง\n- ระบบแนะนำเพื่อน\n- ถอนเงินได้`;
+
+    mockFetchConditional(spaHtml, jinaMarkdown);
+
+    const result = await extractFromUrl("https://example.com/spa-app");
+
+    expect(result.status).toBe("success");
+    expect(result.text).toContain("CiVil Pro MAX");
+    expect(result.text).toContain("คำนวณทางวิศวกรรม");
+  });
+
+  it("falls back to meta tags when Jina AI Reader also fails", async () => {
+    const spaHtml = `<!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <title>CiVil Pro MAX ! | แพลตฟอร์มคำนวณทางวิศวกรรม</title>
+          <meta name="description" content="แพลตฟอร์มคำนวณทางวิศวกรรม พร้อมระบบแนะนำเพื่อนและการถอนเงิน" />
+          <script type="module" src="/assets/index.js"></script>
+        </head>
+        <body><div id="root"></div></body>
+      </html>`;
+
+    mockFetchConditional(spaHtml, null); // Jina fails → meta fallback
+
+    const result = await extractFromUrl("https://example.com/spa-meta-fallback");
+
+    expect(result.status).toBe("success");
+    expect(result.text).toContain("แพลตฟอร์มคำนวณทางวิศวกรรม");
+    expect(result.text).toContain("URL: https://example.com/spa-meta-fallback");
   });
 
   it("truncates text > 30,000 chars and sets truncated=true", async () => {

@@ -49,7 +49,9 @@ export interface ExtractResult {
 const FILE_MAX_CHARS = 50_000;
 const URL_MAX_CHARS = 30_000;
 const FILE_TIMEOUT_MS = 30_000;
-const URL_TIMEOUT_MS = 10_000;
+const URL_TIMEOUT_MS = 25_000; // total budget: direct fetch + optional Jina fallback
+const URL_DIRECT_TIMEOUT_MS = 8_000; // direct fetch gets 8 s before we try Jina
+const URL_JINA_TIMEOUT_MS = 15_000; // Jina AI Reader gets 15 s
 
 // MIME types we handle explicitly
 const MIME_PDF = "application/pdf";
@@ -276,7 +278,7 @@ async function _doUrlExtraction(url: string): Promise<ExtractResult> {
       "User-Agent": "Mozilla/5.0 (compatible; LaunchPadBot/1.0)",
       Accept: "text/html,application/xhtml+xml",
     },
-    signal: AbortSignal.timeout(URL_TIMEOUT_MS),
+    signal: AbortSignal.timeout(URL_DIRECT_TIMEOUT_MS),
   });
 
   if (!response.ok) {
@@ -318,6 +320,19 @@ async function _doUrlExtraction(url: string): Promise<ExtractResult> {
     .trim();
 
   if (rawText.length < 50) {
+    // JS-rendered SPA — direct fetch got only an HTML shell.
+    // Try Jina AI Reader which renders JavaScript before returning content.
+    const jinaText = await _tryJinaReader(url, URL_JINA_TIMEOUT_MS);
+    if (jinaText) {
+      const { text, truncated } = truncate(jinaText, URL_MAX_CHARS);
+      return { status: "success", text, charCount: text.length, truncated };
+    }
+    // Last resort: extract title + description from meta tags
+    const metaText = _extractMetaFallback($, url);
+    if (metaText.length >= 50) {
+      const { text, truncated } = truncate(metaText, URL_MAX_CHARS);
+      return { status: "success", text, charCount: text.length, truncated };
+    }
     return {
       status: "failed",
       error: "Could not extract readable content from URL",
@@ -333,4 +348,52 @@ async function _doUrlExtraction(url: string): Promise<ExtractResult> {
     charCount: text.length,
     truncated,
   };
+}
+
+/**
+ * Fetch the target URL via Jina AI Reader (r.jina.ai), which renders JavaScript
+ * before returning clean Markdown — handles SPAs that fetch() cannot read.
+ * Returns null on any error so the caller can continue to the next fallback.
+ */
+async function _tryJinaReader(url: string, timeoutMs: number): Promise<string | null> {
+  try {
+    const response = await fetch(`https://r.jina.ai/${url}`, {
+      headers: {
+        Accept: "text/plain",
+        "X-Return-Format": "markdown",
+        "X-No-Cache": "true",
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return null;
+    const text = (await response.text()).trim();
+    return text.length >= 50 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compose a minimal description from HTML meta tags.
+ * Used as fallback when the page body has no readable text (e.g. JS-rendered SPAs).
+ */
+function _extractMetaFallback($: ReturnType<typeof cheerio.load>, url: string): string {
+  const title =
+    $("title").first().text().trim() ||
+    $('meta[property="og:title"]').attr("content")?.trim() ||
+    "";
+  const description =
+    $('meta[name="description"]').attr("content")?.trim() ||
+    $('meta[property="og:description"]').attr("content")?.trim() ||
+    $('meta[name="twitter:description"]').attr("content")?.trim() ||
+    "";
+  const keywords = $('meta[name="keywords"]').attr("content")?.trim() || "";
+
+  const parts: string[] = [];
+  if (title) parts.push(`ชื่อ: ${title}`);
+  if (description) parts.push(`คำอธิบาย: ${description}`);
+  if (keywords) parts.push(`คำสำคัญ: ${keywords}`);
+  parts.push(`URL: ${url}`);
+
+  return parts.join("\n").trim();
 }
