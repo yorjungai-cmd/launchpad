@@ -85,9 +85,6 @@ const IDEA_ROW = {
  * Returns a Supabase mock that resolves analysis + idea rows.
  */
 function makeMockDb(analysisRow: Record<string, unknown> | null = COMPLETED_ANALYSIS_ROW) {
-  const maybeSingleAnalysis = vi.fn().mockResolvedValue({ data: analysisRow, error: null });
-  const eqAnalysis = vi.fn().mockReturnValue({ maybeSingle: maybySingle(IDEA_ROW) });
-
   // For the analysis table call
   const selectAnalysis = vi
     .fn()
@@ -102,21 +99,13 @@ function makeMockDb(analysisRow: Record<string, unknown> | null = COMPLETED_ANAL
     if (table === "ai_analyses") return { select: selectAnalysis };
     if (table === "ideas") return { select: selectIdea };
     return {
-      select: vi
-        .fn()
-        .mockReturnValue({
-          eq: vi
-            .fn()
-            .mockReturnValue({
-              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-            }),
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
         }),
+      }),
     };
   });
-
-  void maybySingle;
-  void eqAnalysis;
-  void maybeSingleAnalysis; // silence unused-var
 
   return { from };
 }
@@ -158,6 +147,25 @@ describe("runInlineDocumentGenerationForType", () => {
     await runInlineDocumentGenerationForType("idea-1", "feasibility_report");
 
     expect(documentGenerationService.generateDocumentSet).toHaveBeenCalledOnce();
+    expect(documentGenerationService.composeProjectProposal).not.toHaveBeenCalled();
+  });
+
+  it("passes documentTypes filter so generateDocumentSet only runs for the requested type", async () => {
+    (documentGenerationRepository.findByIdea as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (createAdminSupabaseClient as ReturnType<typeof vi.fn>).mockReturnValue(makeMockDb());
+
+    await runInlineDocumentGenerationForType("idea-1", "feasibility_report");
+
+    // The 5th argument must be { documentTypes: ["feasibility_report"] }
+    // This ensures the service does not generate bmc, launch_pad_plan, etc.
+    expect(documentGenerationService.generateDocumentSet).toHaveBeenCalledWith(
+      "idea-1",
+      "analysis-1",
+      expect.any(Object), // analysisData
+      expect.any(Function), // callClaude
+      { documentTypes: ["feasibility_report"] }
+    );
+    // composeProjectProposal must NOT be called — feasibility_report is not the proposal
     expect(documentGenerationService.composeProjectProposal).not.toHaveBeenCalled();
   });
 

@@ -84,15 +84,25 @@ export class DocumentGenerationService {
    * Generate the full document set for an idea from analysis data.
    * Called by the Edge Function worker.
    * Returns list of created/updated documents.
+   *
+   * @param options.documentTypes - When provided, only the listed document type(s) are
+   *   generated. Allows chunked per-type generation (Vercel 60 s timeout protection)
+   *   without re-generating the entire set. When omitted, all types for the idea's
+   *   stage are produced.
    */
   async generateDocumentSet(
     ideaId: string,
     analysisId: string,
     analysis: AnalysisData,
-    callClaude: ClaudeNarrativeFn
+    callClaude: ClaudeNarrativeFn,
+    options?: { documentTypes?: string[] }
   ): Promise<OutputDocument[]> {
     const stageDisplay = analysis.stage ?? "Sandbox";
-    const documentTypes = resolveDocumentTypesForStage(stageDisplay);
+    const allDocumentTypes = resolveDocumentTypesForStage(stageDisplay);
+    const documentTypes =
+      options?.documentTypes && options.documentTypes.length > 0
+        ? allDocumentTypes.filter((t) => options.documentTypes!.includes(t))
+        : allDocumentTypes;
 
     const templateData: TemplateData = {
       ideaTitle: analysis.ideaTitle,
@@ -187,17 +197,27 @@ export class DocumentGenerationService {
       results.push(doc);
     }
 
-    // Compose proposal last
-    const proposal = await this.composeProjectProposal(ideaId, analysisId, analysis, callClaude);
-    results.push(proposal);
+    // Compose proposal last — only when project_proposal is in the requested set.
+    // In chunked (per-type) generation the caller passes documentTypes: ["project_proposal"]
+    // explicitly; for the full-set path documentTypes is undefined so the guard passes.
+    const shouldGenerateProposal =
+      !options?.documentTypes || options.documentTypes.includes("project_proposal");
+    if (shouldGenerateProposal) {
+      const proposal = await this.composeProjectProposal(ideaId, analysisId, analysis, callClaude);
+      results.push(proposal);
+    }
 
-    // Fire-and-forget: notify submitter that documents are ready
-    this.notifyDocumentsReadyForIdea(ideaId).catch((err) => {
-      logger.warn(
-        { ideaId, err },
-        "DocumentGenerationService: notifyDocumentsReady failed (non-critical)"
-      );
-    });
+    // Fire-and-forget: notify submitter that documents are ready.
+    // Only fires for the full-set path (no documentTypes filter) — the chunked per-type
+    // path does not send notifications (follow-up: orchestrate from the client loop instead).
+    if (!options?.documentTypes) {
+      this.notifyDocumentsReadyForIdea(ideaId).catch((err) => {
+        logger.warn(
+          { ideaId, err },
+          "DocumentGenerationService: notifyDocumentsReady failed (non-critical)"
+        );
+      });
+    }
 
     return results;
   }

@@ -34,42 +34,26 @@ import {
 } from "@/lib/claude/prompts/document-narrative";
 import { promptConfigService } from "@/modules/admin-ai-config/prompt-config-service";
 
+// ─── Shared generation context ────────────────────────────────────────────────
+
+interface GenerationContext {
+  keyInfo: Awaited<ReturnType<typeof resolveActiveKeyInfo>>;
+  promptConfig: { systemPrompt?: string; sections?: Record<string, unknown> } | null;
+  callClaude: ClaudeNarrativeFn;
+  analysisData: AnalysisData;
+  analysisId: string;
+}
+
 /**
- * Generate the full Launch PAD document set for an idea whose analysis has
- * completed. Safe to call multiple times — documents upsert by
- * (idea_id, document_type), so re-runs overwrite idempotently.
+ * Load analysis + idea rows, resolve provider key and prompt config, then
+ * build the `callClaude` closure.  Extracted so the ~90-line setup block is
+ * not duplicated between the full-set and per-type entry points.
  *
- * Guard: if a completed document set already exists, generation is skipped
- * unless `force` is true (the manual "regenerate" action passes force=true).
- * This avoids redundant Claude calls when BD and guest open the idea around
- * the same time.
- *
- * Throws only on unrecoverable errors (missing/incomplete analysis). Narrative
- * failures are swallowed and fall back to deterministic template content.
- *
- * @returns "generated" when documents were produced, "skipped" when an existing
- *          completed set was reused.
+ * Throws when the analysis row is missing or not yet completed.
  */
-export async function runInlineDocumentGeneration(
-  ideaId: string,
-  options: { force?: boolean } = {}
-): Promise<"generated" | "skipped"> {
+async function buildGenerationContext(ideaId: string, logTag: string): Promise<GenerationContext> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = createAdminSupabaseClient() as any;
-
-  // Dedup guard: skip if a completed set already exists (unless forced)
-  if (!options.force) {
-    const existing = await documentGenerationRepository.findByIdea(ideaId);
-    const hasCompletedSet =
-      existing.length > 0 && existing.some((d) => d.generationStatus === "completed");
-    if (hasCompletedSet) {
-      logger.info(
-        { ideaId, count: existing.length },
-        "runInlineDocumentGeneration: completed set already exists — skipping (use force to regenerate)"
-      );
-      return "skipped";
-    }
-  }
 
   // 1. Load completed analysis
   const { data: analysisRow, error: analysisErr } = await db
@@ -80,14 +64,12 @@ export async function runInlineDocumentGeneration(
 
   if (analysisErr || !analysisRow) {
     throw new Error(
-      `runInlineDocumentGeneration: analysis not found for idea ${ideaId}: ${
-        analysisErr?.message ?? "no row"
-      }`
+      `${logTag}: analysis not found for idea ${ideaId}: ${analysisErr?.message ?? "no row"}`
     );
   }
   if (analysisRow.processing_status !== "completed") {
     throw new Error(
-      `runInlineDocumentGeneration: analysis not completed for idea ${ideaId} (status=${analysisRow.processing_status})`
+      `${logTag}: analysis not completed for idea ${ideaId} (status=${analysisRow.processing_status})`
     );
   }
 
@@ -130,7 +112,7 @@ export async function runInlineDocumentGeneration(
     promptConfigService.getPromptConfig().catch((err) => {
       logger.warn(
         { ideaId, err: err instanceof Error ? err.message : String(err) },
-        "runInlineDocumentGeneration: failed to load prompt config — falling back to hardcoded system prompt"
+        `${logTag}: failed to load prompt config — falling back to hardcoded system prompt`
       );
       return null;
     }),
@@ -168,16 +150,59 @@ export async function runInlineDocumentGeneration(
     } catch (err) {
       logger.warn(
         { ideaId, err: err instanceof Error ? err.message : String(err) },
-        "runInlineDocumentGeneration: narrative call failed — falling back to template"
+        `${logTag}: narrative call failed — falling back to template`
       );
       return {};
     }
   };
 
-  // 4. Generate the document set
+  return { keyInfo, promptConfig, callClaude, analysisData, analysisId };
+}
+
+// ─── Public entry points ──────────────────────────────────────────────────────
+
+/**
+ * Generate the full Launch PAD document set for an idea whose analysis has
+ * completed. Safe to call multiple times — documents upsert by
+ * (idea_id, document_type), so re-runs overwrite idempotently.
+ *
+ * Guard: if a completed document set already exists, generation is skipped
+ * unless `force` is true (the manual "regenerate" action passes force=true).
+ * This avoids redundant Claude calls when BD and guest open the idea around
+ * the same time.
+ *
+ * Throws only on unrecoverable errors (missing/incomplete analysis). Narrative
+ * failures are swallowed and fall back to deterministic template content.
+ *
+ * @returns "generated" when documents were produced, "skipped" when an existing
+ *          completed set was reused.
+ */
+export async function runInlineDocumentGeneration(
+  ideaId: string,
+  options: { force?: boolean } = {}
+): Promise<"generated" | "skipped"> {
+  const LOG_TAG = "runInlineDocumentGeneration";
+
+  // Dedup guard: skip if a completed set already exists (unless forced)
+  if (!options.force) {
+    const existing = await documentGenerationRepository.findByIdea(ideaId);
+    const hasCompletedSet =
+      existing.length > 0 && existing.some((d) => d.generationStatus === "completed");
+    if (hasCompletedSet) {
+      logger.info(
+        { ideaId, count: existing.length },
+        `${LOG_TAG}: completed set already exists — skipping (use force to regenerate)`
+      );
+      return "skipped";
+    }
+  }
+
+  const { callClaude, analysisData, analysisId } = await buildGenerationContext(ideaId, LOG_TAG);
+
+  // Generate the full document set (no documentTypes filter → all types)
   await documentGenerationService.generateDocumentSet(ideaId, analysisId, analysisData, callClaude);
 
-  logger.info({ ideaId, analysisId }, "runInlineDocumentGeneration: completed");
+  logger.info({ ideaId, analysisId }, `${LOG_TAG}: completed`);
   return "generated";
 }
 
@@ -187,14 +212,16 @@ export async function runInlineDocumentGeneration(
  *
  * Each call loads promptConfig fresh (no cache) so admin changes take effect
  * on the next generation run without a restart.
+ *
+ * Key invariant: only the requested `documentType` runs through the Claude
+ * narrative path. Other types are never touched.
  */
 export async function runInlineDocumentGenerationForType(
   ideaId: string,
   documentType: string,
   options: { force?: boolean } = {}
 ): Promise<"generated" | "skipped"> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = createAdminSupabaseClient() as any;
+  const LOG_TAG = "runInlineDocumentGenerationForType";
 
   // Dedup guard
   if (!options.force) {
@@ -203,111 +230,12 @@ export async function runInlineDocumentGenerationForType(
       (d) => d.documentType === documentType && d.generationStatus === "completed"
     );
     if (typeDoc) {
-      logger.info(
-        { ideaId, documentType },
-        "runInlineDocumentGenerationForType: already completed — skipping"
-      );
+      logger.info({ ideaId, documentType }, `${LOG_TAG}: already completed — skipping`);
       return "skipped";
     }
   }
 
-  // Load analysis
-  const { data: analysisRow, error: analysisErr } = await db
-    .from("ai_analyses")
-    .select("*")
-    .eq("idea_id", ideaId)
-    .maybeSingle();
-
-  if (analysisErr || !analysisRow) {
-    throw new Error(`runInlineDocumentGenerationForType: analysis not found for idea ${ideaId}`);
-  }
-  if (analysisRow.processing_status !== "completed") {
-    throw new Error(
-      `runInlineDocumentGenerationForType: analysis not completed (status=${analysisRow.processing_status})`
-    );
-  }
-
-  const { data: ideaRow } = await db
-    .from("ideas")
-    .select("id, title, reference_number, submitter_name")
-    .eq("id", ideaId)
-    .maybeSingle();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const a = analysisRow as Record<string, any>;
-
-  const analysisData: AnalysisData = {
-    ideaTitle: (ideaRow?.title as string | undefined) ?? "Untitled",
-    summary: (a["summary"] as string | null) ?? null,
-    stage: (a["stage"] as string | null) ?? null,
-    ideaType: (a["idea_type"] as string | null) ?? null,
-    recommendedAction: (a["recommended_action"] as string | null) ?? null,
-    recommendedActionReasoning: (a["recommended_action_reasoning"] as string | null) ?? null,
-    portfolioMatches: (a["portfolio_matches"] as AnalysisData["portfolioMatches"] | null) ?? [],
-    strategicFitScore: (a["strategic_fit_score"] as number | null) ?? null,
-    marketPotentialScore: (a["market_potential_score"] as number | null) ?? null,
-    technicalFeasibilityScore: (a["technical_feasibility_score"] as number | null) ?? null,
-    resourceRequirementScore: (a["resource_requirement_score"] as number | null) ?? null,
-    businessImpactScore: (a["business_impact_score"] as number | null) ?? null,
-    strategicFitReasoning: (a["strategic_fit_reasoning"] as string | null) ?? null,
-    marketPotentialReasoning: (a["market_potential_reasoning"] as string | null) ?? null,
-    technicalFeasibilityReasoning: (a["technical_feasibility_reasoning"] as string | null) ?? null,
-    resourceRequirementReasoning: (a["resource_requirement_reasoning"] as string | null) ?? null,
-    businessImpactReasoning: (a["business_impact_reasoning"] as string | null) ?? null,
-    referenceNumber: (ideaRow?.reference_number as string | undefined) ?? "",
-    submitterName: (ideaRow?.submitter_name as string | null) ?? null,
-  };
-
-  const analysisId = a["id"] as string;
-
-  const [keyInfo, promptConfig] = await Promise.all([
-    resolveActiveKeyInfo(),
-    promptConfigService.getPromptConfig().catch((err) => {
-      logger.warn(
-        { ideaId, documentType, err: err instanceof Error ? err.message : String(err) },
-        "runInlineDocumentGenerationForType: failed to load prompt config — falling back to hardcoded system prompt"
-      );
-      return null;
-    }),
-  ]);
-
-  const effectiveSystemPrompt = promptConfig?.systemPrompt ?? DOCUMENT_NARRATIVE_SYSTEM_PROMPT;
-
-  const callClaude: ClaudeNarrativeFn = async (params) => {
-    if (!keyInfo) return {};
-    try {
-      const raw = await callProviderTool(
-        { ...keyInfo, model: narrativeModelFor(keyInfo.provider) },
-        {
-          system: effectiveSystemPrompt,
-          messages: [
-            {
-              role: "user",
-              content: buildNarrativeContext({
-                ...params,
-                sectionInstructions: promptConfig?.sections?.[params.documentType],
-              }),
-            },
-          ],
-          tool: NARRATIVE_TOOL_DEFINITION,
-          toolName: NARRATIVE_TOOL_DEFINITION.name,
-          maxTokens: 4096,
-        }
-      );
-      const out = raw as { sections?: Array<{ key: string; content_markdown: string }> };
-      const map: Record<string, string> = {};
-      for (const s of out.sections ?? []) {
-        if (s?.key) map[s.key] = s.content_markdown ?? "";
-      }
-      return map;
-    } catch (err) {
-      logger.warn(
-        { ideaId, documentType, err: err instanceof Error ? err.message : String(err) },
-        "runInlineDocumentGenerationForType: narrative call failed — falling back to template"
-      );
-      return {};
-    }
-  };
+  const { callClaude, analysisData, analysisId } = await buildGenerationContext(ideaId, LOG_TAG);
 
   if (documentType === "project_proposal") {
     await documentGenerationService.composeProjectProposal(
@@ -317,17 +245,18 @@ export async function runInlineDocumentGenerationForType(
       callClaude
     );
   } else {
+    // Pass documentTypes filter so generateDocumentSet only processes the
+    // requested type — neither the other non-proposal docs nor the proposal
+    // itself will make a Claude call.
     await documentGenerationService.generateDocumentSet(
       ideaId,
       analysisId,
       analysisData,
-      callClaude
+      callClaude,
+      { documentTypes: [documentType] }
     );
   }
 
-  logger.info(
-    { ideaId, documentType, analysisId },
-    "runInlineDocumentGenerationForType: completed"
-  );
+  logger.info({ ideaId, documentType, analysisId }, `${LOG_TAG}: completed`);
   return "generated";
 }
