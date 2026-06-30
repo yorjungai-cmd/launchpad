@@ -169,13 +169,17 @@ export class PromptConfigService {
     }
 
     // One write — UPSERT by primary key (eliminates the INSERT/UPDATE TOCTOU race)
-    const upsertPayload = existing?.id
-      ? { id: existing.id, prompt_config: config, updated_at: new Date().toISOString() }
-      : { prompt_config: config };
+    // Cast required: Supabase types don't include prompt_config until `supabase gen types` is re-run
+    const upsertPayload: Record<string, unknown> = {
+      prompt_config: config as unknown as Record<string, unknown>,
+      updated_at: new Date().toISOString(),
+    };
+    if (existing?.id) upsertPayload.id = existing.id;
 
     const { data: upserted, error: upsertErr } = await db
       .from("system_settings")
-      .upsert(upsertPayload)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .upsert(upsertPayload as any)
       .select("id")
       .single<{ id: string }>();
 
@@ -223,7 +227,11 @@ export class PromptConfigService {
     if (existingId) {
       const { error } = await db
         .from("system_settings")
-        .update({ prompt_config: DEFAULT_PROMPT_CONFIG, updated_at: new Date().toISOString() })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update({
+          prompt_config: DEFAULT_PROMPT_CONFIG as any,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", existingId);
 
       if (error) {
@@ -232,7 +240,8 @@ export class PromptConfigService {
     } else {
       const { error } = await db
         .from("system_settings")
-        .insert({ prompt_config: DEFAULT_PROMPT_CONFIG });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert({ prompt_config: DEFAULT_PROMPT_CONFIG as any });
 
       if (error) {
         logger.error({ err: error }, "PromptConfigService._upsertDefaults: INSERT error");
