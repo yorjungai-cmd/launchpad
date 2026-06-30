@@ -250,12 +250,14 @@ export type AuditAction =
   | "user_created"
   | "user_role_changed"
   | "user_deleted"
-  | "ai_config_updated";
+  | "ai_config_updated"
+  | "prompt_config_updated"
+  | "prompt_config_reset";
 
 /**
  * AuditTargetType — the domain entity type affected by the audited operation.
  */
-export type AuditTargetType = "api_key" | "user" | "ai_config";
+export type AuditTargetType = "api_key" | "user" | "ai_config" | "prompt_config";
 
 /**
  * AuditLogEntry — the payload passed to AdminAuditLogService.log().
@@ -274,3 +276,32 @@ export interface AuditLogEntry {
   targetId: string;
   metadata: Record<string, string | number | boolean>;
 }
+
+// ─── Zod: Prompt Config ───────────────────────────────────────────────────────
+
+export const PromptConfigSchema = z.object({
+  systemPrompt: z.string().min(1).max(8000),
+  sections: z.record(z.string(), z.record(z.string(), z.string().max(2000))),
+});
+
+export type PromptConfigData = z.infer<typeof PromptConfigSchema>;
+
+export const UpdateSystemPromptSchema = z.object({
+  systemPrompt: z.string().min(1).max(8000),
+});
+
+export const UpdateDocumentTypeSectionsSchema = z.object({
+  documentType: z.string().min(1),
+  sections: z.record(z.string(), z.string().max(2000)),
+});
+
+export const TestSectionPromptSchema = z.object({
+  systemPrompt: z.string().min(1).max(8000),
+  sectionKey: z.string().min(1),
+  documentType: z.string().min(1),
+  instruction: z.string().max(2000),
+});
+
+export const ResetPromptDocumentTypeSchema = z.object({
+  documentType: z.string().min(1),
+});
