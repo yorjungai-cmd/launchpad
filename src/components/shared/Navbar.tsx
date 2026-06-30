@@ -33,7 +33,8 @@ export function Navbar({ className }: NavbarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
-  // Navigation links — locale-prefixed
+  // Main application links are locale-prefixed. The standalone user guide is
+  // a static public document and therefore uses one shared URL for all locales.
   const navLinks: NavLink[] = [
     { href: `/${locale}`, label: locale === "th" ? "หน้าหลัก" : "Home" },
     {
@@ -43,6 +44,10 @@ export function Navbar({ className }: NavbarProps) {
     {
       href: `/${locale}/dashboard/executive`,
       label: locale === "th" ? "แดชบอร์ด" : "Dashboard",
+    },
+    {
+      href: "/user-guide/index.html",
+      label: locale === "th" ? "คู่มือ" : "Guide",
     },
     {
       href: `/${locale}/settings`,
