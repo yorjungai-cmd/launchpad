@@ -23,6 +23,7 @@ import { router, roleProcedure } from "@/server/trpc";
 import { userManagementService } from "./user-service";
 import { aiConfigService } from "./ai-config-service";
 import { apiKeyService } from "./api-key-service";
+import { promptConfigService } from "./prompt-config-service";
 import {
   CreateUserSchema,
   UpdateUserRoleSchema,
@@ -32,7 +33,21 @@ import {
   SaveApiKeySchema,
   UpdateApiKeySchema,
   DeleteApiKeySchema,
+  UpdateSystemPromptSchema,
+  UpdateDocumentTypeSectionsSchema,
+  TestSectionPromptSchema,
+  ResetPromptDocumentTypeSchema,
 } from "./schemas";
+import { SAMPLE_TEST_IDEA } from "@/lib/document-generation/prompt-config-defaults";
+import {
+  resolveActiveKeyInfo,
+  callProviderTool,
+  narrativeModelFor,
+} from "@/lib/claude/inline-worker";
+import {
+  buildNarrativeContext,
+  NARRATIVE_TOOL_DEFINITION,
+} from "@/lib/claude/prompts/document-narrative";
 
 export const adminRouter = router({
   // ─── User Management (US-32) ───────────────────────────────────────────────
@@ -234,5 +249,72 @@ export const adminRouter = router({
       const adminId = ctx.user.id;
       await apiKeyService.deleteApiKey(input.id, adminId);
       return { success: true as const };
+    }),
+
+  // ─── Prompt Config (new feature) ──────────────────────────────────────────
+
+  getPromptConfig: roleProcedure("admin").query(async () => {
+    return promptConfigService.getPromptConfig();
+  }),
+
+  updateSystemPrompt: roleProcedure("admin")
+    .input(UpdateSystemPromptSchema)
+    .mutation(async ({ input, ctx }) => {
+      return promptConfigService.updateSystemPrompt(input.systemPrompt, ctx.user.id);
+    }),
+
+  updateDocumentTypeSections: roleProcedure("admin")
+    .input(UpdateDocumentTypeSectionsSchema)
+    .mutation(async ({ input, ctx }) => {
+      return promptConfigService.updateDocumentTypeSections(
+        input.documentType,
+        input.sections,
+        ctx.user.id
+      );
+    }),
+
+  resetPromptDocumentType: roleProcedure("admin")
+    .input(ResetPromptDocumentTypeSchema)
+    .mutation(async ({ input, ctx }) => {
+      return promptConfigService.resetDocumentType(input.documentType, ctx.user.id);
+    }),
+
+  testSectionPrompt: roleProcedure("admin")
+    .input(TestSectionPromptSchema)
+    .mutation(async ({ input }) => {
+      const keyInfo = await resolveActiveKeyInfo();
+      if (!keyInfo) return { content: "ไม่พบ API key ที่ active — ตรวจสอบ tab API Keys" };
+
+      const narrativeContext = buildNarrativeContext({
+        ideaTitle: SAMPLE_TEST_IDEA.title,
+        summary: SAMPLE_TEST_IDEA.summary,
+        stage: SAMPLE_TEST_IDEA.stage,
+        ideaType: SAMPLE_TEST_IDEA.ideaType,
+        recommendedAction: SAMPLE_TEST_IDEA.recommendedAction,
+        portfolioMatches: [...SAMPLE_TEST_IDEA.portfolioMatches],
+        feasibilityScores: SAMPLE_TEST_IDEA.feasibilityScores,
+        documentType: input.documentType,
+        sectionKeys: [input.sectionKey],
+      });
+
+      try {
+        const raw = await callProviderTool(
+          { ...keyInfo, model: narrativeModelFor(keyInfo.provider) },
+          {
+            system: input.systemPrompt,
+            messages: [{ role: "user", content: narrativeContext }],
+            tool: NARRATIVE_TOOL_DEFINITION,
+            toolName: NARRATIVE_TOOL_DEFINITION.name,
+            maxTokens: 1024,
+          }
+        );
+        const out = raw as { sections?: Array<{ key: string; content_markdown: string }> };
+        const section = out.sections?.find((s) => s.key === input.sectionKey);
+        return { content: section?.content_markdown ?? "ไม่มีผลลัพธ์จาก AI" };
+      } catch (err) {
+        return {
+          content: `เกิดข้อผิดพลาด: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
     }),
 });
