@@ -306,11 +306,11 @@ export const adminRouter = router({
             messages: [{ role: "user", content: narrativeContext }],
             tool: NARRATIVE_TOOL_DEFINITION,
             toolName: NARRATIVE_TOOL_DEFINITION.name,
-            maxTokens: 1024,
+            maxTokens: 2048,
           }
         );
         const out = raw as { sections?: Array<{ key: string; content_markdown: string }> };
-        const section = out.sections?.find((s) => s.key === input.sectionKey);
+        const section = out.sections?.find((s) => s.key === input.sectionKey) ?? out.sections?.[0];
         return { content: section?.content_markdown ?? "ไม่มีผลลัพธ์จาก AI" };
       } catch (err) {
         return {
