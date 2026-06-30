@@ -19,10 +19,10 @@ import { adminAuditLogService } from "@/modules/admin-ai-config/audit-log-servic
  * Builds a mock Supabase client with enough chain coverage for the service.
  *
  * Chain shapes used:
- *   SELECT: from().select().limit().maybeSingle()
- *   INSERT: from().insert().select().single()
- *   UPDATE: from().update().eq()                 (no select chain needed for _upsertDefaults)
- *   UPDATE+select: from().update().eq().select().single()  (used by _saveConfig)
+ *   SELECT:  from().select().limit().maybeSingle()
+ *   INSERT:  from().insert().select().single()
+ *   UPDATE:  from().update().eq()                  (no select chain — _upsertDefaults)
+ *   UPSERT:  from().upsert().select().single()     (used by _saveConfig)
  */
 function makeMockDb(existingRow: Record<string, unknown> | null) {
   const single = vi.fn().mockResolvedValue({ data: existingRow, error: null });
@@ -36,11 +36,15 @@ function makeMockDb(existingRow: Record<string, unknown> | null) {
   const selectAfterInsert = vi.fn().mockReturnValue({ single });
   const insert = vi.fn().mockReturnValue({ select: selectAfterInsert });
 
+  // upsert chain: .upsert(…).select(…).single()
+  const selectAfterUpsert = vi.fn().mockReturnValue({ single });
+  const upsert = vi.fn().mockReturnValue({ select: selectAfterUpsert });
+
   // select chain: .select(…).limit(…).maybeSingle()
   const limit = vi.fn().mockReturnValue({ maybeSingle });
   const select = vi.fn().mockReturnValue({ limit });
 
-  const from = vi.fn().mockReturnValue({ select, update, insert });
+  const from = vi.fn().mockReturnValue({ select, update, insert, upsert });
 
   return {
     from,
@@ -51,6 +55,7 @@ function makeMockDb(existingRow: Record<string, unknown> | null) {
     _update: update,
     _insert: insert,
     _select: select,
+    _upsert: upsert,
   };
 }
 

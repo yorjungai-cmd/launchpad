@@ -18,6 +18,12 @@
 
 import { z } from "zod";
 import { UserRole } from "@/shared/enums";
+import { DOCUMENT_TYPES_IN_WORKFLOW_ORDER } from "@/lib/document-generation/prompt-config-defaults";
+
+const DOCUMENT_TYPE_VALUES = DOCUMENT_TYPES_IN_WORKFLOW_ORDER.map((d) => d.type) as [
+  string,
+  ...string[],
+];
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -291,7 +297,7 @@ export const UpdateSystemPromptSchema = z.object({
 });
 
 export const UpdateDocumentTypeSectionsSchema = z.object({
-  documentType: z.string().min(1),
+  documentType: z.enum(DOCUMENT_TYPE_VALUES),
   sections: z.record(z.string(), z.string().max(2000)),
 });
 
@@ -303,5 +309,5 @@ export const TestSectionPromptSchema = z.object({
 });
 
 export const ResetPromptDocumentTypeSchema = z.object({
-  documentType: z.string().min(1),
+  documentType: z.enum(DOCUMENT_TYPE_VALUES),
 });

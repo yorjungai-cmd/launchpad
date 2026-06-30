@@ -52,9 +52,7 @@ Format output as clean markdown — no excessive headers within a section.`,
     executive_presentation: {
       executive_overview: "สรุปภาพรวมสำหรับผู้บริหาร กระชับ ตรงประเด็น เน้น business value",
     },
-    stage_gate_guide: {
-      gate_criteria: "กำหนดเกณฑ์ผ่าน gate ที่วัดได้และชัดเจน",
-    },
+    stage_gate_guide: {},
     project_proposal: {
       executive_summary:
         "เขียนบทสรุปผู้บริหาร 2-3 ย่อหน้า ครอบคลุมวัตถุประสงค์หลัก ศักยภาพตลาด และข้อเสนอแนะเชิงกลยุทธ์",

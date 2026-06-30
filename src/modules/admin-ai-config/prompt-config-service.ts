@@ -156,7 +156,7 @@ export class PromptConfigService {
   ): Promise<PromptConfigData> {
     const db = createAdminSupabaseClient();
 
-    // Fetch existing row to get its id (or discover there is none)
+    // One read — get the existing row id (needed to target the singleton row in UPSERT)
     const { data: existing, error: fetchErr } = await db
       .from("system_settings")
       .select("id")
@@ -168,47 +168,38 @@ export class PromptConfigService {
       throw AppError.internal("Failed to read prompt configuration for update");
     }
 
-    let rowId: string;
+    // One write — UPSERT by primary key (eliminates the INSERT/UPDATE TOCTOU race)
+    const upsertPayload = existing?.id
+      ? { id: existing.id, prompt_config: config, updated_at: new Date().toISOString() }
+      : { prompt_config: config };
 
-    if (!existing?.id) {
-      // No row yet — INSERT
-      const { data: inserted, error: insertErr } = await db
-        .from("system_settings")
-        .insert({ prompt_config: config })
-        .select("id")
-        .single<{ id: string }>();
+    const { data: upserted, error: upsertErr } = await db
+      .from("system_settings")
+      .upsert(upsertPayload)
+      .select("id")
+      .single<{ id: string }>();
 
-      if (insertErr || !inserted) {
-        logger.error({ err: insertErr }, "PromptConfigService._saveConfig: DB INSERT error");
-        throw AppError.internal("Failed to create prompt configuration record");
-      }
-
-      rowId = inserted.id;
-    } else {
-      // Row exists — UPDATE
-      rowId = existing.id;
-
-      const { error: updateErr } = await db
-        .from("system_settings")
-        .update({ prompt_config: config, updated_at: new Date().toISOString() })
-        .eq("id", rowId);
-
-      if (updateErr) {
-        logger.error({ err: updateErr, rowId }, "PromptConfigService._saveConfig: DB UPDATE error");
-        throw AppError.internal("Failed to update prompt configuration");
-      }
+    if (upsertErr || !upserted) {
+      logger.error({ err: upsertErr }, "PromptConfigService._saveConfig: DB UPSERT error");
+      throw AppError.internal("Failed to save prompt configuration");
     }
 
-    // Single audit log entry for this operation (no double-logging)
+    const rowId = upserted.id;
+
+    // Single audit log entry — fire-and-forget so a log failure never rolls back a successful save
     const metadataKey = auditAction === "prompt_config_reset" ? "document_type" : "changed_field";
 
-    await adminAuditLogService.log({
-      action: auditAction,
-      adminId,
-      targetType: "prompt_config",
-      targetId: rowId,
-      metadata: { [metadataKey]: changedField },
-    });
+    adminAuditLogService
+      .log({
+        action: auditAction,
+        adminId,
+        targetType: "prompt_config",
+        targetId: rowId,
+        metadata: { [metadataKey]: changedField },
+      })
+      .catch((err) =>
+        logger.warn({ err }, "PromptConfigService: audit log failed — data was already saved")
+      );
 
     return config;
   }
