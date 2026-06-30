@@ -32,6 +32,7 @@ import {
   NARRATIVE_TOOL_DEFINITION,
   buildNarrativeContext,
 } from "@/lib/claude/prompts/document-narrative";
+import { promptConfigService } from "@/modules/admin-ai-config/prompt-config-service";
 
 /**
  * Generate the full Launch PAD document set for an idea whose analysis has
@@ -123,16 +124,36 @@ export async function runInlineDocumentGeneration(
     submitterName: (ideaRow?.submitter_name as string | null) ?? null,
   };
 
-  // 3. Resolve provider key once; build a narrative function (best-effort)
-  const keyInfo = await resolveActiveKeyInfo();
+  // 3. Resolve provider key + load prompt config (no cache — takes effect immediately)
+  const [keyInfo, promptConfig] = await Promise.all([
+    resolveActiveKeyInfo(),
+    promptConfigService.getPromptConfig().catch((err) => {
+      logger.warn(
+        { ideaId, err: err instanceof Error ? err.message : String(err) },
+        "runInlineDocumentGeneration: failed to load prompt config — falling back to hardcoded system prompt"
+      );
+      return null;
+    }),
+  ]);
+
+  const effectiveSystemPrompt = promptConfig?.systemPrompt ?? DOCUMENT_NARRATIVE_SYSTEM_PROMPT;
+
   const callClaude: ClaudeNarrativeFn = async (params) => {
     if (!keyInfo) return {};
     try {
       const raw = await callProviderTool(
         { ...keyInfo, model: narrativeModelFor(keyInfo.provider) },
         {
-          system: DOCUMENT_NARRATIVE_SYSTEM_PROMPT,
-          messages: [{ role: "user", content: buildNarrativeContext(params) }],
+          system: effectiveSystemPrompt,
+          messages: [
+            {
+              role: "user",
+              content: buildNarrativeContext({
+                ...params,
+                sectionInstructions: promptConfig?.sections?.[params.documentType],
+              }),
+            },
+          ],
           tool: NARRATIVE_TOOL_DEFINITION,
           toolName: NARRATIVE_TOOL_DEFINITION.name,
           maxTokens: 4096,
@@ -157,5 +178,156 @@ export async function runInlineDocumentGeneration(
   await documentGenerationService.generateDocumentSet(ideaId, analysisId, analysisData, callClaude);
 
   logger.info({ ideaId, analysisId }, "runInlineDocumentGeneration: completed");
+  return "generated";
+}
+
+/**
+ * Generate documents for ONE document type — used for chunked generation
+ * to stay within Vercel's 60s serverless timeout per tRPC call.
+ *
+ * Each call loads promptConfig fresh (no cache) so admin changes take effect
+ * on the next generation run without a restart.
+ */
+export async function runInlineDocumentGenerationForType(
+  ideaId: string,
+  documentType: string,
+  options: { force?: boolean } = {}
+): Promise<"generated" | "skipped"> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = createAdminSupabaseClient() as any;
+
+  // Dedup guard
+  if (!options.force) {
+    const existing = await documentGenerationRepository.findByIdea(ideaId);
+    const typeDoc = existing.find(
+      (d) => d.documentType === documentType && d.generationStatus === "completed"
+    );
+    if (typeDoc) {
+      logger.info(
+        { ideaId, documentType },
+        "runInlineDocumentGenerationForType: already completed — skipping"
+      );
+      return "skipped";
+    }
+  }
+
+  // Load analysis
+  const { data: analysisRow, error: analysisErr } = await db
+    .from("ai_analyses")
+    .select("*")
+    .eq("idea_id", ideaId)
+    .maybeSingle();
+
+  if (analysisErr || !analysisRow) {
+    throw new Error(`runInlineDocumentGenerationForType: analysis not found for idea ${ideaId}`);
+  }
+  if (analysisRow.processing_status !== "completed") {
+    throw new Error(
+      `runInlineDocumentGenerationForType: analysis not completed (status=${analysisRow.processing_status})`
+    );
+  }
+
+  const { data: ideaRow } = await db
+    .from("ideas")
+    .select("id, title, reference_number, submitter_name")
+    .eq("id", ideaId)
+    .maybeSingle();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const a = analysisRow as Record<string, any>;
+
+  const analysisData: AnalysisData = {
+    ideaTitle: (ideaRow?.title as string | undefined) ?? "Untitled",
+    summary: (a["summary"] as string | null) ?? null,
+    stage: (a["stage"] as string | null) ?? null,
+    ideaType: (a["idea_type"] as string | null) ?? null,
+    recommendedAction: (a["recommended_action"] as string | null) ?? null,
+    recommendedActionReasoning: (a["recommended_action_reasoning"] as string | null) ?? null,
+    portfolioMatches: (a["portfolio_matches"] as AnalysisData["portfolioMatches"] | null) ?? [],
+    strategicFitScore: (a["strategic_fit_score"] as number | null) ?? null,
+    marketPotentialScore: (a["market_potential_score"] as number | null) ?? null,
+    technicalFeasibilityScore: (a["technical_feasibility_score"] as number | null) ?? null,
+    resourceRequirementScore: (a["resource_requirement_score"] as number | null) ?? null,
+    businessImpactScore: (a["business_impact_score"] as number | null) ?? null,
+    strategicFitReasoning: (a["strategic_fit_reasoning"] as string | null) ?? null,
+    marketPotentialReasoning: (a["market_potential_reasoning"] as string | null) ?? null,
+    technicalFeasibilityReasoning: (a["technical_feasibility_reasoning"] as string | null) ?? null,
+    resourceRequirementReasoning: (a["resource_requirement_reasoning"] as string | null) ?? null,
+    businessImpactReasoning: (a["business_impact_reasoning"] as string | null) ?? null,
+    referenceNumber: (ideaRow?.reference_number as string | undefined) ?? "",
+    submitterName: (ideaRow?.submitter_name as string | null) ?? null,
+  };
+
+  const analysisId = a["id"] as string;
+
+  const [keyInfo, promptConfig] = await Promise.all([
+    resolveActiveKeyInfo(),
+    promptConfigService.getPromptConfig().catch((err) => {
+      logger.warn(
+        { ideaId, documentType, err: err instanceof Error ? err.message : String(err) },
+        "runInlineDocumentGenerationForType: failed to load prompt config — falling back to hardcoded system prompt"
+      );
+      return null;
+    }),
+  ]);
+
+  const effectiveSystemPrompt = promptConfig?.systemPrompt ?? DOCUMENT_NARRATIVE_SYSTEM_PROMPT;
+
+  const callClaude: ClaudeNarrativeFn = async (params) => {
+    if (!keyInfo) return {};
+    try {
+      const raw = await callProviderTool(
+        { ...keyInfo, model: narrativeModelFor(keyInfo.provider) },
+        {
+          system: effectiveSystemPrompt,
+          messages: [
+            {
+              role: "user",
+              content: buildNarrativeContext({
+                ...params,
+                sectionInstructions: promptConfig?.sections?.[params.documentType],
+              }),
+            },
+          ],
+          tool: NARRATIVE_TOOL_DEFINITION,
+          toolName: NARRATIVE_TOOL_DEFINITION.name,
+          maxTokens: 4096,
+        }
+      );
+      const out = raw as { sections?: Array<{ key: string; content_markdown: string }> };
+      const map: Record<string, string> = {};
+      for (const s of out.sections ?? []) {
+        if (s?.key) map[s.key] = s.content_markdown ?? "";
+      }
+      return map;
+    } catch (err) {
+      logger.warn(
+        { ideaId, documentType, err: err instanceof Error ? err.message : String(err) },
+        "runInlineDocumentGenerationForType: narrative call failed — falling back to template"
+      );
+      return {};
+    }
+  };
+
+  if (documentType === "project_proposal") {
+    await documentGenerationService.composeProjectProposal(
+      ideaId,
+      analysisId,
+      analysisData,
+      callClaude
+    );
+  } else {
+    await documentGenerationService.generateDocumentSet(
+      ideaId,
+      analysisId,
+      analysisData,
+      callClaude
+    );
+  }
+
+  logger.info(
+    { ideaId, documentType, analysisId },
+    "runInlineDocumentGenerationForType: completed"
+  );
   return "generated";
 }

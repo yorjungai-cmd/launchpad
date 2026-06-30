@@ -64,9 +64,10 @@ export function buildNarrativeContext(params: {
   };
   documentType: string;
   sectionKeys: string[];
+  sectionInstructions?: Record<string, string>;
 }): string {
   const scores = params.feasibilityScores;
-  return `Generate narrative sections for a "${params.documentType}" document.
+  const base = `Generate narrative sections for a "${params.documentType}" document.
 
 IDEA: ${params.ideaTitle}
 SUMMARY: ${params.summary}
@@ -84,4 +85,15 @@ FEASIBILITY SCORES:
 PORTFOLIO MATCHES: ${params.portfolioMatches.map((m) => `${m.product} (${m.relevance})`).join(", ") || "None"}
 
 Write sections: ${params.sectionKeys.join(", ")}`;
+
+  if (!params.sectionInstructions) return base;
+
+  const relevant = params.sectionKeys
+    .filter((k) => params.sectionInstructions![k])
+    .map((k) => `- ${k}: ${params.sectionInstructions![k]}`)
+    .join("\n");
+
+  if (!relevant) return base;
+
+  return `${base}\n\nSection-specific instructions:\n${relevant}`;
 }

@@ -295,6 +295,7 @@ export const adminRouter = router({
         feasibilityScores: SAMPLE_TEST_IDEA.feasibilityScores,
         documentType: input.documentType,
         sectionKeys: [input.sectionKey],
+        sectionInstructions: { [input.sectionKey]: input.instruction },
       });
 
       try {
