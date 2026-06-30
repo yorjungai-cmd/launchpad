@@ -37,17 +37,23 @@ export function PromptConfigTab() {
     { staleTime: 0 }
   );
 
-  function setDirty(key: string, dirty: boolean) {
+  const setDirty = React.useCallback((key: string, dirty: boolean) => {
     setDirtyTypes((prev) => {
+      const alreadySet = prev.has(key);
+      if (dirty === alreadySet) return prev; // same content → bail out, no re-render
       const next = new Set(prev);
-      if (dirty) {
-        next.add(key);
-      } else {
-        next.delete(key);
-      }
+      if (dirty) next.add(key);
+      else next.delete(key);
       return next;
     });
-  }
+  }, []);
+
+  const onGlobalDirtyChange = React.useCallback((d: boolean) => setDirty("global", d), [setDirty]);
+
+  const onSectionDirtyChange = React.useCallback(
+    (d: boolean) => setDirty(selected, d),
+    [setDirty, selected]
+  );
 
   if (isLoading) return <PromptConfigSkeleton />;
 
@@ -87,16 +93,13 @@ export function PromptConfigTab() {
       {/* Content panel */}
       <div className="min-w-0 flex-1">
         {selected === "global" ? (
-          <SystemPromptEditor
-            initialValue={systemPrompt}
-            onDirtyChange={(d) => setDirty("global", d)}
-          />
+          <SystemPromptEditor initialValue={systemPrompt} onDirtyChange={onGlobalDirtyChange} />
         ) : (
           <DocTypeSectionEditor
             documentType={selected as WorkflowDocumentType}
             currentSections={(sections[selected] as Record<string, string>) ?? {}}
             systemPrompt={systemPrompt}
-            onDirtyChange={(d) => setDirty(selected, d)}
+            onDirtyChange={onSectionDirtyChange}
           />
         )}
       </div>
