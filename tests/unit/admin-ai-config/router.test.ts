@@ -65,6 +65,18 @@ vi.mock("@/modules/admin-ai-config/ai-config-service", () => ({
   },
 }));
 
+// ─── Mock PortfolioConfigService ─────────────────────────────────────────────
+
+const mockGetPortfolioConfig = vi.fn();
+const mockUpdatePortfolioConfig = vi.fn();
+
+vi.mock("@/modules/admin-ai-config/portfolio-config-service", () => ({
+  portfolioConfigService: {
+    getPortfolioConfig: mockGetPortfolioConfig,
+    updatePortfolioConfig: mockUpdatePortfolioConfig,
+  },
+}));
+
 // ─── Mock ApiKeyService ───────────────────────────────────────────────────────
 
 const mockListApiKeys = vi.fn();
@@ -141,6 +153,10 @@ const MOCK_API_KEY_MASKED = {
   isActive: true,
   createdAt: "2026-06-01T00:00:00.000Z",
   createdByName: "Admin User",
+};
+
+const MOCK_PORTFOLIO_CONFIG = {
+  products: [],
 };
 
 // ─── Context factory ──────────────────────────────────────────────────────────
@@ -290,6 +306,38 @@ describe("AdminRouter", () => {
     it("unauthenticated cannot call updateAiConfig (UNAUTHORIZED)", async () => {
       const caller = await makeCaller();
       await expect(caller.updateAiConfig(VALID_AI_CONFIG_INPUT)).rejects.toMatchObject({
+        code: "UNAUTHORIZED",
+      });
+    });
+
+    // ── getPortfolioConfig ─────────────────────────────────────────────────
+
+    it.each(NON_ADMIN_ROLES)("%s cannot call getPortfolioConfig (FORBIDDEN)", async (role) => {
+      const caller = await makeCaller(role);
+      await expect(caller.getPortfolioConfig()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    });
+
+    it("unauthenticated cannot call getPortfolioConfig (UNAUTHORIZED)", async () => {
+      const caller = await makeCaller();
+      await expect(caller.getPortfolioConfig()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    });
+
+    // ── updatePortfolioConfig ──────────────────────────────────────────────
+
+    const VALID_PORTFOLIO_CONFIG_INPUT = {
+      products: [],
+    };
+
+    it.each(NON_ADMIN_ROLES)("%s cannot call updatePortfolioConfig (FORBIDDEN)", async (role) => {
+      const caller = await makeCaller(role);
+      await expect(caller.updatePortfolioConfig(VALID_PORTFOLIO_CONFIG_INPUT)).rejects.toMatchObject({
+        code: "FORBIDDEN",
+      });
+    });
+
+    it("unauthenticated cannot call updatePortfolioConfig (UNAUTHORIZED)", async () => {
+      const caller = await makeCaller();
+      await expect(caller.updatePortfolioConfig(VALID_PORTFOLIO_CONFIG_INPUT)).rejects.toMatchObject({
         code: "UNAUTHORIZED",
       });
     });
@@ -719,6 +767,39 @@ describe("AdminRouter", () => {
 
       expect(result).toEqual({ success: true });
       expect(mockDeleteApiKey).toHaveBeenCalledWith(KEY_UUID, ADMIN_UUID);
+    });
+
+    // ── getPortfolioConfig ─────────────────────────────────────────────────
+
+    it("getPortfolioConfig → returns PortfolioConfigData with products array", async () => {
+      mockGetPortfolioConfig.mockResolvedValueOnce(MOCK_PORTFOLIO_CONFIG);
+
+      const caller = await makeCaller("admin");
+      const result = await caller.getPortfolioConfig();
+
+      expect(result).toMatchObject({
+        products: expect.arrayContaining([]),
+      });
+      expect(Array.isArray(result.products)).toBe(true);
+    });
+
+    // ── updatePortfolioConfig ──────────────────────────────────────────────
+
+    it("updatePortfolioConfig → returns PortfolioConfigData", async () => {
+      mockUpdatePortfolioConfig.mockResolvedValueOnce(MOCK_PORTFOLIO_CONFIG);
+
+      const caller = await makeCaller("admin");
+      const result = await caller.updatePortfolioConfig({
+        products: [],
+      });
+
+      expect(result).toMatchObject({
+        products: expect.any(Array),
+      });
+      expect(mockUpdatePortfolioConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ products: [] }),
+        ADMIN_UUID
+      );
     });
   });
 });
