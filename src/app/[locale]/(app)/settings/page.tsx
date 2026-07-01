@@ -31,7 +31,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Settings, Bot, KeyRound, Users, SlidersHorizontal } from "lucide-react";
+import { Settings, Bot, KeyRound, Users, SlidersHorizontal, Package } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -78,6 +78,14 @@ const PromptConfigTab = dynamic(
   { loading: () => <TabContentSkeleton />, ssr: false }
 );
 
+const PortfolioTab = dynamic(
+  () =>
+    import("@/components/settings/PortfolioTab").then((m) => ({
+      default: m.PortfolioTab,
+    })),
+  { loading: () => <TabContentSkeleton />, ssr: false }
+);
+
 // Skeleton used as the Suspense/dynamic loading fallback for AiConfigTab
 function AiConfigTabSkeleton() {
   return (
@@ -112,7 +120,7 @@ function TabContentSkeleton() {
 
 // ─── Tab definitions ──────────────────────────────────────────────────────────
 
-type TabId = "ai-config" | "prompt-config" | "api-keys" | "users";
+type TabId = "ai-config" | "prompt-config" | "portfolio" | "api-keys" | "users";
 
 interface TabDef {
   id: TabId;
@@ -123,6 +131,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: "ai-config", label: "AI Configuration", icon: Bot },
   { id: "prompt-config", label: "Prompt Config", icon: SlidersHorizontal },
+  { id: "portfolio", label: "Portfolio", icon: Package },
   { id: "api-keys", label: "API Keys", icon: KeyRound },
   { id: "users", label: "Users", icon: Users },
 ];
@@ -141,6 +150,8 @@ function TabContent({ activeTab }: { activeTab: TabId }) {
       return <AiConfigTab />;
     case "prompt-config":
       return <PromptConfigTab />;
+    case "portfolio":
+      return <PortfolioTab />;
     case "api-keys":
       return <ApiKeysTab />;
     case "users":
