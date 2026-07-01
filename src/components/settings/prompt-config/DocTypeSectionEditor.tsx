@@ -29,7 +29,10 @@ import {
 // Mirrors document-templates.ts but defined here to avoid a server-only import
 // in a client component.
 
-const SECTION_META: Record<string, Array<{ key: string; title: string; isNarrative: boolean }>> = {
+export const SECTION_META: Record<
+  string,
+  Array<{ key: string; title: string; isNarrative: boolean }>
+> = {
   feasibility_report: [
     { key: "executive_summary", title: "บทสรุปผู้บริหาร", isNarrative: true },
     { key: "feasibility_scores", title: "คะแนนความเป็นไปได้", isNarrative: false },
@@ -130,8 +133,8 @@ export function DocTypeSectionEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentType]);
 
-  const isDirty =
-    JSON.stringify(local) !== JSON.stringify({ ...defaultSections, ...currentSections });
+  const saved = { ...defaultSections, ...currentSections };
+  const isDirty = Object.keys({ ...local, ...saved }).some((k) => local[k] !== saved[k]);
 
   React.useEffect(() => {
     onDirtyChange(isDirty);

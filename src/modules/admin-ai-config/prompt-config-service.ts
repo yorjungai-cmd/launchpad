@@ -244,7 +244,15 @@ export class PromptConfigService {
         .insert({ prompt_config: DEFAULT_PROMPT_CONFIG as any });
 
       if (error) {
-        logger.error({ err: error }, "PromptConfigService._upsertDefaults: INSERT error");
+        // 23505 = unique_violation — another request beat us to the INSERT; data is safe.
+        if ((error as { code?: string }).code === "23505") {
+          logger.debug(
+            { err: error },
+            "PromptConfigService._upsertDefaults: INSERT race (ignored)"
+          );
+        } else {
+          logger.error({ err: error }, "PromptConfigService._upsertDefaults: INSERT error");
+        }
       }
     }
 

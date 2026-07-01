@@ -62,4 +62,15 @@ describe("TestSectionPromptSchema", () => {
     });
     expect(result.sectionKey).toBe("executive_summary");
   });
+
+  it("rejects empty instruction string", () => {
+    expect(() =>
+      TestSectionPromptSchema.parse({
+        systemPrompt: "system",
+        sectionKey: "executive_summary",
+        documentType: "feasibility_report",
+        instruction: "",
+      })
+    ).toThrow();
+  });
 });

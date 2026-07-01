@@ -305,7 +305,7 @@ export const TestSectionPromptSchema = z.object({
   systemPrompt: z.string().min(1).max(8000),
   sectionKey: z.string().min(1),
   documentType: z.string().min(1),
-  instruction: z.string().max(2000),
+  instruction: z.string().min(1).max(2000),
 });
 
 export const ResetPromptDocumentTypeSchema = z.object({
