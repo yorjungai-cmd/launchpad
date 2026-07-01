@@ -311,3 +311,37 @@ export const TestSectionPromptSchema = z.object({
 export const ResetPromptDocumentTypeSchema = z.object({
   documentType: z.enum(DOCUMENT_TYPE_VALUES),
 });
+
+// ─── Zod: Portfolio Config ─────────────────────────────────────────────────────
+
+export const ProductSchema = z.object({
+  id: z.string().min(1).regex(/^\S+$/, "Product ID must not contain spaces"),
+  name: z.string().min(1).max(100),
+  category: z.string().min(1).max(100),
+  description: z.string().min(1),
+  targetUsers: z.string().min(1),
+});
+
+export type Product = z.infer<typeof ProductSchema>;
+
+export const UpdatePortfolioConfigSchema = z
+  .object({
+    products: z.array(ProductSchema),
+  })
+  .superRefine((data, ctx) => {
+    const ids = data.products.map((p) => p.id);
+    const uniqueIds = new Set(ids);
+    if (uniqueIds.size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Product ID must be unique",
+        path: ["products"],
+      });
+    }
+  });
+
+export type UpdatePortfolioConfigInput = z.infer<typeof UpdatePortfolioConfigSchema>;
+
+export interface PortfolioConfigData {
+  products: Product[];
+}
