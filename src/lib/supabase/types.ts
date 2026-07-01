@@ -234,6 +234,7 @@ export type Database = {
           id: string;
           ai_config: Record<string, unknown>;
           prompt_config: Record<string, unknown>;
+          portfolio_config: Record<string, unknown>;
           created_at: string;
           updated_at: string;
         };
@@ -241,6 +242,7 @@ export type Database = {
           id?: string;
           ai_config?: Record<string, unknown>;
           prompt_config?: Record<string, unknown>;
+          portfolio_config?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
@@ -248,6 +250,7 @@ export type Database = {
           id?: string;
           ai_config?: Record<string, unknown>;
           prompt_config?: Record<string, unknown>;
+          portfolio_config?: Record<string, unknown>;
           created_at?: string;
           updated_at?: string;
         };
