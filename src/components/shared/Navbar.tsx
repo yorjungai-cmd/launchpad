@@ -12,6 +12,7 @@ import { LocaleSwitcher } from "./LocaleSwitcher";
 interface NavLink {
   href: string;
   label: string;
+  openInNewTab?: boolean;
 }
 
 interface NavbarProps {
@@ -48,6 +49,7 @@ export function Navbar({ className }: NavbarProps) {
     {
       href: "/user-guide/index.html",
       label: locale === "th" ? "คู่มือ" : "Guide",
+      openInNewTab: true,
     },
     {
       href: `/${locale}/settings`,
@@ -92,6 +94,8 @@ export function Navbar({ className }: NavbarProps) {
             <li key={link.href}>
               <Link
                 href={link.href}
+                target={link.openInNewTab ? "_blank" : undefined}
+                rel={link.openInNewTab ? "noopener noreferrer" : undefined}
                 className={cn(
                   "rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   "hover:bg-accent hover:text-accent-foreground",
@@ -145,6 +149,8 @@ export function Navbar({ className }: NavbarProps) {
               <li key={link.href}>
                 <Link
                   href={link.href}
+                  target={link.openInNewTab ? "_blank" : undefined}
+                  rel={link.openInNewTab ? "noopener noreferrer" : undefined}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
                     "block rounded-md px-3 py-2 text-sm font-medium transition-colors",
