@@ -1,27 +1,10 @@
-/**
- * PromptBuilder — assembles the complete Claude API request for idea analysis.
- *
- * Builds the full `messages.create()` parameters including:
- *   - system prompt (with portfolio context)
- *   - user message (idea content)
- *   - tools array (analysis tool definition)
- *   - tool_choice (force analyze_idea tool use)
- *
- * Ref: design/components.md — PromptBuilder
- *      design/integration.md — Claude API request pattern
- *
- * Task 2.2
- */
-
-import { ANALYSIS_SYSTEM_PROMPT } from "./prompts/analysis-system-prompt";
+import { buildAnalysisSystemPrompt } from "./prompts/analysis-system-prompt";
 import {
-  ANALYSIS_TOOL_DEFINITION,
+  buildAnalysisToolDefinition,
   ANALYZE_IDEA_TOOL_CHOICE,
 } from "./prompts/analysis-tool-definition";
+import type { Product } from "@/modules/admin-ai-config/schemas";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-/** Input idea content for prompt building */
 export interface IdeaContent {
   title: string;
   description: string;
@@ -29,18 +12,12 @@ export interface IdeaContent {
   inputType: "text" | "file" | "url";
 }
 
-/** Parameters for Claude messages.create() — system, messages, tools, tool_choice */
 export interface ClaudeMessageParams {
   system: string;
-  messages: Array<{
-    role: "user" | "assistant";
-    content: string;
-  }>;
-  tools: readonly [typeof ANALYSIS_TOOL_DEFINITION];
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  tools: ReturnType<typeof buildAnalysisToolDefinition>[];
   tool_choice: typeof ANALYZE_IDEA_TOOL_CHOICE;
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatInputTypeLabel(inputType: "text" | "file" | "url"): string {
   switch (inputType) {
@@ -83,36 +60,13 @@ function buildUserMessage(idea: IdeaContent): string {
   return parts.join("\n");
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
-
-/**
- * Builds the complete parameter object for Claude messages.create().
- *
- * @param idea - The idea content to analyze
- * @returns ClaudeMessageParams ready to spread into anthropic.messages.create()
- *
- * @example
- * ```ts
- * const params = buildAnalysisPrompt({ title, description, extractedText, inputType });
- * const response = await anthropic.messages.create({
- *   model: 'claude-sonnet-4-5',
- *   max_tokens: 2048,
- *   ...params,
- * });
- * ```
- */
-export function buildAnalysisPrompt(idea: IdeaContent): ClaudeMessageParams {
-  const userMessage = buildUserMessage(idea);
+export function buildAnalysisPrompt(idea: IdeaContent, products: Product[]): ClaudeMessageParams {
+  const toolDef = buildAnalysisToolDefinition(products.map((p) => p.id));
 
   return {
-    system: ANALYSIS_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: userMessage,
-      },
-    ],
-    tools: [ANALYSIS_TOOL_DEFINITION],
+    system: buildAnalysisSystemPrompt(products),
+    messages: [{ role: "user", content: buildUserMessage(idea) }],
+    tools: [toolDef],
     tool_choice: ANALYZE_IDEA_TOOL_CHOICE,
   };
 }

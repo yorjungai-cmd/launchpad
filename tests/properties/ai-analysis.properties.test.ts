@@ -26,6 +26,38 @@ import { describe, it } from "vitest";
 import fc from "fast-check";
 import { ClaudeAnalysisOutputSchema } from "@/modules/ai-analysis/schemas";
 import { buildAnalysisPrompt } from "@/lib/claude/prompt-builder";
+import type { Product } from "@/modules/admin-ai-config/schemas";
+
+const TEST_PRODUCTS: Product[] = [
+  {
+    id: "PTCAD",
+    name: "PTCAD AI",
+    category: "CAD",
+    description: "CAD software",
+    targetUsers: "Engineers",
+  },
+  {
+    id: "APP.AI",
+    name: "APP.AI",
+    category: "AI Platform",
+    description: "AI platform",
+    targetUsers: "Business users",
+  },
+  {
+    id: "COBO",
+    name: "COBO",
+    category: "ERP",
+    description: "ERP system",
+    targetUsers: "Accountants",
+  },
+  {
+    id: "CRM",
+    name: "CRM",
+    category: "CRM",
+    description: "CRM system",
+    targetUsers: "Sales teams",
+  },
+];
 
 // ─── Property 1: Claude Response Schema Parse Safety ─────────────────────────
 // Validates: US-05, US-06, US-07, US-09
@@ -346,7 +378,7 @@ describe("Property 5 — Prompt Builder never returns empty output for valid inp
           extractedText: fc.string({ minLength: 1, maxLength: 10_000 }),
         }),
         (ideaContent) => {
-          const prompt = buildAnalysisPrompt(ideaContent);
+          const prompt = buildAnalysisPrompt(ideaContent, TEST_PRODUCTS);
           return (
             prompt.system.length > 0 &&
             prompt.messages.length > 0 &&

@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 export type PortfolioRelevance = "High" | "Medium" | "Low";
 
 export interface PortfolioMatch {
-  product: "PTCAD" | "APP.AI" | "COBO" | "CRM";
+  product: string;
   relevance: PortfolioRelevance;
   reasoning: string;
 }

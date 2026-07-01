@@ -258,12 +258,13 @@ export type AuditAction =
   | "user_deleted"
   | "ai_config_updated"
   | "prompt_config_updated"
-  | "prompt_config_reset";
+  | "prompt_config_reset"
+  | "portfolio_config_updated";
 
 /**
  * AuditTargetType — the domain entity type affected by the audited operation.
  */
-export type AuditTargetType = "api_key" | "user" | "ai_config" | "prompt_config";
+export type AuditTargetType = "api_key" | "user" | "ai_config" | "prompt_config" | "portfolio_config";
 
 /**
  * AuditLogEntry — the payload passed to AdminAuditLogService.log().
@@ -311,3 +312,37 @@ export const TestSectionPromptSchema = z.object({
 export const ResetPromptDocumentTypeSchema = z.object({
   documentType: z.enum(DOCUMENT_TYPE_VALUES),
 });
+
+// ─── Zod: Portfolio Config ─────────────────────────────────────────────────────
+
+export const ProductSchema = z.object({
+  id: z.string().min(1).regex(/^\S+$/, "Product ID must not contain spaces"),
+  name: z.string().min(1).max(100),
+  category: z.string().min(1).max(100),
+  description: z.string().min(1).max(2000),
+  targetUsers: z.string().min(1).max(500),
+});
+
+export type Product = z.infer<typeof ProductSchema>;
+
+export const UpdatePortfolioConfigSchema = z
+  .object({
+    products: z.array(ProductSchema).max(50),
+  })
+  .superRefine((data, ctx) => {
+    const ids = data.products.map((p) => p.id);
+    const uniqueIds = new Set(ids);
+    if (uniqueIds.size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Product ID must be unique",
+        path: ["products"],
+      });
+    }
+  });
+
+export type UpdatePortfolioConfigInput = z.infer<typeof UpdatePortfolioConfigSchema>;
+
+export interface PortfolioConfigData {
+  products: Product[];
+}

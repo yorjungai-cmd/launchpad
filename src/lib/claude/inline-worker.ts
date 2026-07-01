@@ -22,7 +22,8 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { buildAnalysisPrompt } from "./prompt-builder";
 import { ClaudeAnalysisOutputSchema } from "@/modules/ai-analysis/schemas";
 import { aiAnalysisRepository } from "@/modules/ai-analysis/repository";
-import { ANALYSIS_TOOL_DEFINITION } from "./prompts/analysis-tool-definition";
+import { buildAnalysisToolDefinition } from "./prompts/analysis-tool-definition";
+import type { Product } from "@/modules/admin-ai-config/schemas";
 import logger from "@/lib/logger";
 import type { ClaudeAnalysisOutput } from "@/modules/ai-analysis/types";
 
@@ -87,13 +88,19 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
     const keyInfo = await _resolveKeyInfo(db);
     if (!keyInfo) throw new Error("No active API key found. Configure one in Settings → API Keys.");
 
+    // 3b. Read portfolio products for analysis prompt
+    const products = await _fetchPortfolioProducts(db);
+
     // 4. Build prompt
-    const promptParams = buildAnalysisPrompt({
-      title: row.title,
-      description: row.raw_content ?? "",
-      extractedText: row.extracted_text ?? "",
-      inputType: (row.input_type as "text" | "file" | "url") ?? "text",
-    });
+    const promptParams = buildAnalysisPrompt(
+      {
+        title: row.title,
+        description: row.raw_content ?? "",
+        extractedText: row.extracted_text ?? "",
+        inputType: (row.input_type as "text" | "file" | "url") ?? "text",
+      },
+      products
+    );
 
     // 4b. For PDF file submissions: download the file and attach as a vision document
     //     so the AI can see images, charts, and diagrams — not just extracted text.
@@ -112,11 +119,12 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
     }
 
     // 5. Call provider (generic tool-call → analysis tool)
+    const analysisToolDef = buildAnalysisToolDefinition(products.map((p) => p.id));
     const analysisRaw = await callProviderTool(keyInfo, {
       system: promptParams.system,
       messages: [...promptParams.messages],
-      tool: ANALYSIS_TOOL_DEFINITION,
-      toolName: ANALYSIS_TOOL_DEFINITION.name,
+      tool: analysisToolDef,
+      toolName: analysisToolDef.name,
       maxTokens: 4096,
       pdfAttachment,
     });
@@ -202,6 +210,25 @@ async function _downloadPdfAsBase64(
     );
     return undefined;
   }
+}
+
+// ─── Portfolio products fetch ─────────────────────────────────────────────────
+
+async function _fetchPortfolioProducts(
+  db: ReturnType<typeof createAdminSupabaseClient>
+): Promise<Product[]> {
+  const { data, error } = await db
+    .from("system_settings")
+    .select("portfolio_config")
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    logger.warn({ err: error }, "_fetchPortfolioProducts: DB error, falling back to empty products");
+  }
+
+  const config = data?.portfolio_config as { products?: Product[] } | null;
+  return config?.products ?? [];
 }
 
 // ─── Key + Config resolution ──────────────────────────────────────────────────

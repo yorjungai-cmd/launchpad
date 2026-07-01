@@ -39,7 +39,7 @@ interface AiAnalysisRow {
   idea_type: "SaaS" | "SI" | "Hardware" | "Platform" | "Internal Tool" | "Partnership" | null;
   idea_type_confidence: number | null;
   portfolio_matches: Array<{
-    product: "PTCAD" | "APP.AI" | "COBO" | "CRM";
+    product: string;
     relevance: "High" | "Medium" | "Low";
     reasoning: string;
   }> | null;
