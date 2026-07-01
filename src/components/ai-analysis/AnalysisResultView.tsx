@@ -167,7 +167,7 @@ export function AnalysisResultView({ analysis, userRole, className }: AnalysisRe
       : null;
 
   const portfolioMatches = (currentAnalysis.portfolioMatches ?? []).map((m) => ({
-    product: m.product as "PTCAD" | "APP.AI" | "COBO" | "CRM",
+    product: m.product,
     relevance: m.relevance as "High" | "Medium" | "Low",
     reasoning: m.reasoning,
   }));

@@ -65,7 +65,7 @@ export interface AIAnalysis {
 
   // Portfolio matches (JSONB array)
   portfolioMatches: Array<{
-    product: "PTCAD" | "APP.AI" | "COBO" | "CRM";
+    product: string;
     relevance: "High" | "Medium" | "Low";
     reasoning: string;
   }> | null;

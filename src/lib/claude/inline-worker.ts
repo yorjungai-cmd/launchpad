@@ -217,11 +217,15 @@ async function _downloadPdfAsBase64(
 async function _fetchPortfolioProducts(
   db: ReturnType<typeof createAdminSupabaseClient>
 ): Promise<Product[]> {
-  const { data } = await db
+  const { data, error } = await db
     .from("system_settings")
     .select("portfolio_config")
     .limit(1)
     .maybeSingle();
+
+  if (error) {
+    logger.warn({ err: error }, "_fetchPortfolioProducts: DB error, falling back to empty products");
+  }
 
   const config = data?.portfolio_config as { products?: Product[] } | null;
   return config?.products ?? [];

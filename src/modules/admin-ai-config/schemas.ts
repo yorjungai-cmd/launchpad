@@ -319,15 +319,15 @@ export const ProductSchema = z.object({
   id: z.string().min(1).regex(/^\S+$/, "Product ID must not contain spaces"),
   name: z.string().min(1).max(100),
   category: z.string().min(1).max(100),
-  description: z.string().min(1),
-  targetUsers: z.string().min(1),
+  description: z.string().min(1).max(2000),
+  targetUsers: z.string().min(1).max(500),
 });
 
 export type Product = z.infer<typeof ProductSchema>;
 
 export const UpdatePortfolioConfigSchema = z
   .object({
-    products: z.array(ProductSchema),
+    products: z.array(ProductSchema).max(50),
   })
   .superRefine((data, ctx) => {
     const ids = data.products.map((p) => p.id);
