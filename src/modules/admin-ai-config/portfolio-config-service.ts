@@ -3,8 +3,9 @@ import logger from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { adminAuditLogService } from "./audit-log-service";
 import type { Product, PortfolioConfigData, UpdatePortfolioConfigInput } from "./schemas";
+import { UpdatePortfolioConfigSchema } from "./schemas";
 
-const DEFAULT_PORTFOLIO_CONFIG: PortfolioConfigData = { products: [] };
+export const DEFAULT_PORTFOLIO_CONFIG: PortfolioConfigData = { products: [] };
 
 interface SystemSettingsPortfolioRow {
   id: string;
@@ -28,7 +29,15 @@ export class PortfolioConfigService {
 
     if (data === null) return DEFAULT_PORTFOLIO_CONFIG;
 
-    return { products: data.portfolio_config?.products ?? [] };
+    const parsed = UpdatePortfolioConfigSchema.safeParse(data.portfolio_config);
+    if (!parsed.success) {
+      logger.warn(
+        { err: parsed.error },
+        "PortfolioConfigService.getPortfolioConfig: portfolio_config validation failed, falling back to default"
+      );
+      return DEFAULT_PORTFOLIO_CONFIG;
+    }
+    return parsed.data;
   }
 
   async updatePortfolioConfig(

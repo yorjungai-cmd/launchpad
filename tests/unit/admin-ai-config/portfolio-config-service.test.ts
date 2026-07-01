@@ -44,7 +44,7 @@ vi.mock("@/lib/supabase/server", () => ({
 
 // ─── Import after mocks ───────────────────────────────────────────────────────
 
-import { PortfolioConfigService } from "@/modules/admin-ai-config/portfolio-config-service";
+import { PortfolioConfigService, DEFAULT_PORTFOLIO_CONFIG } from "@/modules/admin-ai-config/portfolio-config-service";
 import type { Product } from "@/modules/admin-ai-config/schemas";
 
 const SAMPLE_PRODUCTS: Product[] = [
@@ -102,6 +102,16 @@ describe("PortfolioConfigService.getPortfolioConfig()", () => {
     await expect(service.getPortfolioConfig()).rejects.toMatchObject({
       message: expect.stringContaining("Failed to read portfolio"),
     });
+  });
+
+  it("falls back to default when portfolio_config JSONB is invalid", async () => {
+    // DB row exists but portfolio_config has invalid shape
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { portfolio_config: { products: [{ id: "", name: "bad" }] } }, // id violates min(1)
+      error: null,
+    });
+    const result = await service.getPortfolioConfig();
+    expect(result).toEqual(DEFAULT_PORTFOLIO_CONFIG);
   });
 });
 
