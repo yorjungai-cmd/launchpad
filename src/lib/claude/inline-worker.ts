@@ -88,9 +88,10 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
     const keyInfo = await _resolveKeyInfo(db);
     if (!keyInfo) throw new Error("No active API key found. Configure one in Settings → API Keys.");
 
+    // 3b. Read portfolio products for analysis prompt
+    const products = await _fetchPortfolioProducts(db);
+
     // 4. Build prompt
-    // TODO(Task 7): fetch real portfolio products from DB and pass here
-    const products: Product[] = [];
     const promptParams = buildAnalysisPrompt(
       {
         title: row.title,
@@ -209,6 +210,21 @@ async function _downloadPdfAsBase64(
     );
     return undefined;
   }
+}
+
+// ─── Portfolio products fetch ─────────────────────────────────────────────────
+
+async function _fetchPortfolioProducts(
+  db: ReturnType<typeof createAdminSupabaseClient>
+): Promise<Product[]> {
+  const { data } = await db
+    .from("system_settings")
+    .select("portfolio_config")
+    .limit(1)
+    .maybeSingle();
+
+  const config = data?.portfolio_config as { products?: Product[] } | null;
+  return config?.products ?? [];
 }
 
 // ─── Key + Config resolution ──────────────────────────────────────────────────
