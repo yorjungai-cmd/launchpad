@@ -258,12 +258,13 @@ export type AuditAction =
   | "user_deleted"
   | "ai_config_updated"
   | "prompt_config_updated"
-  | "prompt_config_reset";
+  | "prompt_config_reset"
+  | "portfolio_config_updated";
 
 /**
  * AuditTargetType — the domain entity type affected by the audited operation.
  */
-export type AuditTargetType = "api_key" | "user" | "ai_config" | "prompt_config";
+export type AuditTargetType = "api_key" | "user" | "ai_config" | "prompt_config" | "portfolio_config";
 
 /**
  * AuditLogEntry — the payload passed to AdminAuditLogService.log().
