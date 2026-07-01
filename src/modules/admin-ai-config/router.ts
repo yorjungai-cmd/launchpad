@@ -37,8 +37,10 @@ import {
   UpdateDocumentTypeSectionsSchema,
   TestSectionPromptSchema,
   ResetPromptDocumentTypeSchema,
+  UpdatePortfolioConfigSchema,
 } from "./schemas";
 import { SAMPLE_TEST_IDEA } from "@/lib/document-generation/prompt-config-defaults";
+import { portfolioConfigService } from "./portfolio-config-service";
 import {
   resolveActiveKeyInfo,
   callProviderTool,
@@ -150,6 +152,38 @@ export const adminRouter = router({
     .mutation(async ({ input, ctx }) => {
       const adminId = ctx.user.id;
       return aiConfigService.updateAiConfig(input, adminId);
+    }),
+
+  // ─── Portfolio Config ──────────────────────────────────────────────────────
+
+  /**
+   * admin.getPortfolioConfig
+   *
+   * Returns current product portfolio configuration from system_settings.
+   *
+   * Role: admin only
+   * Input: none
+   * Output: PortfolioConfigData ({ products: Product[] })
+   */
+  getPortfolioConfig: roleProcedure("admin").query(async () => {
+    return portfolioConfigService.getPortfolioConfig();
+  }),
+
+  /**
+   * admin.updatePortfolioConfig
+   *
+   * Replaces the full products array in system_settings.portfolio_config.
+   *
+   * Role: admin only
+   * Input: UpdatePortfolioConfigSchema ({ products: Product[] })
+   * Output: PortfolioConfigData
+   * Errors: BAD_REQUEST (duplicate ids, invalid fields — caught by Zod before service)
+   */
+  updatePortfolioConfig: roleProcedure("admin")
+    .input(UpdatePortfolioConfigSchema)
+    .mutation(async ({ input, ctx }) => {
+      const adminId = ctx.user.id;
+      return portfolioConfigService.updatePortfolioConfig(input, adminId);
     }),
 
   // ─── API Key Management (US-34) ────────────────────────────────────────────
