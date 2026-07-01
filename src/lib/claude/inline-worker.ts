@@ -22,7 +22,8 @@ import { createAdminSupabaseClient } from "@/lib/supabase/server";
 import { buildAnalysisPrompt } from "./prompt-builder";
 import { ClaudeAnalysisOutputSchema } from "@/modules/ai-analysis/schemas";
 import { aiAnalysisRepository } from "@/modules/ai-analysis/repository";
-import { ANALYSIS_TOOL_DEFINITION } from "./prompts/analysis-tool-definition";
+import { buildAnalysisToolDefinition } from "./prompts/analysis-tool-definition";
+import type { Product } from "@/modules/admin-ai-config/schemas";
 import logger from "@/lib/logger";
 import type { ClaudeAnalysisOutput } from "@/modules/ai-analysis/types";
 
@@ -88,12 +89,17 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
     if (!keyInfo) throw new Error("No active API key found. Configure one in Settings → API Keys.");
 
     // 4. Build prompt
-    const promptParams = buildAnalysisPrompt({
-      title: row.title,
-      description: row.raw_content ?? "",
-      extractedText: row.extracted_text ?? "",
-      inputType: (row.input_type as "text" | "file" | "url") ?? "text",
-    });
+    // TODO(Task 7): fetch real portfolio products from DB and pass here
+    const products: Product[] = [];
+    const promptParams = buildAnalysisPrompt(
+      {
+        title: row.title,
+        description: row.raw_content ?? "",
+        extractedText: row.extracted_text ?? "",
+        inputType: (row.input_type as "text" | "file" | "url") ?? "text",
+      },
+      products
+    );
 
     // 4b. For PDF file submissions: download the file and attach as a vision document
     //     so the AI can see images, charts, and diagrams — not just extracted text.
@@ -112,11 +118,12 @@ export async function runInlineAnalysis(ideaId: string): Promise<void> {
     }
 
     // 5. Call provider (generic tool-call → analysis tool)
+    const analysisToolDef = buildAnalysisToolDefinition(products.map((p) => p.id));
     const analysisRaw = await callProviderTool(keyInfo, {
       system: promptParams.system,
       messages: [...promptParams.messages],
-      tool: ANALYSIS_TOOL_DEFINITION,
-      toolName: ANALYSIS_TOOL_DEFINITION.name,
+      tool: analysisToolDef,
+      toolName: analysisToolDef.name,
       maxTokens: 4096,
       pdfAttachment,
     });

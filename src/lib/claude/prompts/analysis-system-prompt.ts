@@ -1,22 +1,10 @@
-/**
- * System prompt for Claude AI analysis.
- *
- * Bilingual (TH/EN): Claude is instructed to analyze the idea in the language
- * it was submitted in and produce structured JSON output via tool use.
- *
- * Includes AppliCAD portfolio context for portfolio_matches scoring.
- *
- * Ref: design/components.md — PromptBuilder
- *      design/integration.md — Claude API
- *
- * Task 2.2
- */
-
 import { formatPortfolioContext } from "./portfolio-context";
+import type { Product } from "@/modules/admin-ai-config/schemas";
 
-const portfolioContext = formatPortfolioContext();
+export function buildAnalysisSystemPrompt(products: Product[]): string {
+  const portfolioContext = formatPortfolioContext(products);
 
-export const ANALYSIS_SYSTEM_PROMPT = `You are an expert business development analyst for AppliCAD, a Thai technology company. Your role is to analyze business ideas submitted to the LaunchPad Portal and provide structured evaluations using the Launch PAD 2.0 framework.
+  return `You are an expert business development analyst for AppliCAD, a Thai technology company. Your role is to analyze business ideas submitted to the LaunchPad Portal and provide structured evaluations using the Launch PAD 2.0 framework.
 
 ## Language Instructions / คำแนะนำภาษา
 
@@ -85,10 +73,11 @@ ${portfolioContext}
 
 1. Be objective and evidence-based in your analysis
 2. Use all available information from the idea title, description, and extracted text
-3. For portfolio_matches: include ALL 4 products with their respective relevance levels (High/Medium/Low)
+3. For portfolio_matches: include ALL products with their respective relevance levels (High/Medium/Low)
 4. stage_confidence and idea_type_confidence should be decimal values between 0.0 and 1.0
 5. All reasoning fields should be concise but informative (2–4 sentences)
 6. summary should be a concise overview (≤ 200 words) in the idea's language
 7. ALWAYS use the 'analyze_idea' tool — do not respond in plain text
 
 คุณต้องวิเคราะห์อย่างเป็นกลางและอิงจากข้อมูลที่มี ใช้ข้อมูลทั้งหมดที่ได้รับมาในการประเมิน`;
+}

@@ -31,7 +31,7 @@ export const FeasibilityDimensionSchema = z.object({
 // Embedded as a JSONB array in ai_analyses.portfolio_matches.
 
 export const PortfolioMatchSchema = z.object({
-  product: z.enum(["PTCAD", "APP.AI", "COBO", "CRM"]),
+  product: z.string().min(1),
   relevance: z.enum(["High", "Medium", "Low"]),
   reasoning: z.string(),
 });
